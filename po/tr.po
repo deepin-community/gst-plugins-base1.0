@@ -1,24 +1,24 @@
-# translation of gst-plugins-base-1.10.0.po to Turkish
+# translation of gst-plugins-base-1.16.0.po to Turkish
 # This file is put in the public domain.
 # This file is distributed under the same license as the gst-plugins-base package.
 # Server Acim <serveracim@gmail.com>, 2010.
 # Server Acim <serveracim@gmail.com>, 2013, 2015.
 # Emin Tufan Çetin <etcetin@gmail.com>, 2017.
-# Mehmet Kececi <mkececi@mehmetkececi.com>, 2017, 2019.
+# Mehmet Kececi <mkececi@mehmetkececi.com>, 2017, 2019, 2021.
 msgid ""
 msgstr ""
-"Project-Id-Version: gst-plugins-base 1.15.1\n"
-"Report-Msgid-Bugs-To: http://bugzilla.gnome.org/\n"
-"POT-Creation-Date: 2019-02-26 11:43+0000\n"
-"PO-Revision-Date: 2019-01-25 12:06+0300\n"
+"Project-Id-Version: gst-plugins-base 1.19.2\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2023-02-22 11:52+0000\n"
+"PO-Revision-Date: 2021-10-04 13:55+0300\n"
 "Last-Translator: Mehmet Kececi <mkececi@mehmetkececi.com>\n"
-"Language-Team: Turkish <gnu-tr-u12a@lists.sourceforge.net>\n"
+"Language-Team: Turkish <gnome-turk@gnome.org>\n"
 "Language: tr\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Virtaal 0.7.1\n"
+"X-Generator: Poedit 3.0\n"
 "X-Bugs: Report translation errors to the Language-Team address.\n"
 "X-Project-Style: gnome\n"
 
@@ -77,37 +77,25 @@ msgstr "CD bulunamıyor."
 msgid "Could not read CD."
 msgstr "CD okunamıyor."
 
-msgid "failed to draw pattern"
-msgstr "desen çizilemedi"
-
-msgid "A GL error occurred"
-msgstr "Bir GL hatası oluştu"
-
-msgid "format wasn't negotiated before get function"
-msgstr "İşlev alınmadan önce biçim anlaşması yapılmadı"
-
-#, c-format
-msgid "Missing element '%s' - check your GStreamer installation."
-msgstr "Kayıp öge '%s' - GStreamer kurulumunu denetleyin."
-
 msgid "Could not determine type of stream"
 msgstr "Akışın türü belirlenemiyor"
 
 msgid "This appears to be a text file"
 msgstr "Bu bir metin dosyasına benziyor"
 
+#, c-format
+msgid "Missing element '%s' - check your GStreamer installation."
+msgstr "Kayıp öge '%s' - GStreamer kurulumunu denetleyin."
+
 msgid "Could not create \"uridecodebin\" element."
 msgstr "\"uridecodebin\" ögesi oluşturulamıyor."
 
-msgid "Could not create \"uridecodebin3\" element."
-msgstr "\"uridecodebin3\" ögesi oluşturulamıyor."
-
 #, c-format
 msgid "Both autovideosink and %s elements are missing."
-msgstr "autovideosink ve %s ögelerininin ikisi de kayıp."
+msgstr "Hem autovideosink hem de % s öğeleri eksik."
 
 msgid "The autovideosink element is missing."
-msgstr "autovideosink ögesi kayıp."
+msgstr "Autovideosink ögesi kayıp."
 
 #, c-format
 msgid "Configured videosink %s is not working."
@@ -115,10 +103,10 @@ msgstr "Yapılandırılmış olan videosink ögesi %s çalışmıyor."
 
 #, c-format
 msgid "Both autovideosink and %s elements are not working."
-msgstr "autovideosink ve %s ögelerinin ikisi de çalışmıyor."
+msgstr "Hem autovideosink hem de %s ögelerinin ikisi de çalışmıyor."
 
 msgid "The autovideosink element is not working."
-msgstr "autovideosink ögesi çalışmıyor."
+msgstr "Autovideosink ögesi çalışmıyor."
 
 msgid "Custom text sink element is not usable."
 msgstr "Özel metin gömme ögesi kullanılamaz durumda."
@@ -128,10 +116,10 @@ msgstr "Ses denetimi bulunamadı"
 
 #, c-format
 msgid "Both autoaudiosink and %s elements are missing."
-msgstr "autoaudiosink ve %s ögelerinin ikisi de kayıp."
+msgstr "Hem autoaudiosink hem de %s ögelerinin ikisi de kayıp."
 
 msgid "The autoaudiosink element is missing."
-msgstr "autoaudiosink ögesi kayıp."
+msgstr "Autoaudiosink ögesi kayıp."
 
 #, c-format
 msgid "Configured audiosink %s is not working."
@@ -139,10 +127,10 @@ msgstr "Yapılandırılmış olan audiosink ögesi %s çalışmıyor."
 
 #, c-format
 msgid "Both autoaudiosink and %s elements are not working."
-msgstr "autoaudiosink ve %s ögelerinin ikisi de çalışmıyor."
+msgstr "Hem autoaudiosink hem de %s ögelerinin ikisi de çalışmıyor."
 
 msgid "The autoaudiosink element is not working."
-msgstr "autoaudiosink ögesi çalışmıyor."
+msgstr "Autoaudiosink ögesi çalışmıyor."
 
 msgid "Can't play a text file without video or visualizations."
 msgstr "Video veya görsellik olmadan metin dosyasını oynatamaz."
@@ -165,7 +153,15 @@ msgstr "Bu akış türü henüz çalınamıyor."
 msgid "No URI handler implemented for \"%s\"."
 msgstr "\"%s\" için hiçbir URI işleyicisi geliştirilmemiş."
 
+#, fuzzy
+msgid "Source element can't be prepared"
+msgstr "Kaynak ögesi geçersiz."
+
 msgid "Source element is invalid."
+msgstr "Kaynak ögesi geçersiz."
+
+#, fuzzy
+msgid "Source element has no pads."
 msgstr "Kaynak ögesi geçersiz."
 
 #, c-format
@@ -177,6 +173,15 @@ msgstr "Sesi yeterince hızlı kaydedemiyor"
 
 msgid "This CD has no audio tracks"
 msgstr "Bu CD hiç ses izi içermiyor"
+
+msgid "failed to draw pattern"
+msgstr "desen çizilemedi"
+
+msgid "A GL error occurred"
+msgstr "Bir GL hatası oluştu"
+
+msgid "format wasn't negotiated before get function"
+msgstr "işlev alınmadan önce biçim anlaşması yapılmadı"
 
 msgid "ID3 tag"
 msgstr "ID3 etiketi"
@@ -211,9 +216,11 @@ msgstr "Kayıpsız MSZH"
 msgid "Run-length encoding"
 msgstr "Çalıştırma-uzunluğu kodlaması"
 
+#. subtitle formats with static descriptions
 msgid "Timed Text"
 msgstr "Zamanlanmış Metin"
 
+#. FIXME: add variant field to typefinder?
 msgid "Subtitle"
 msgstr "Alt yazı"
 
@@ -293,6 +300,9 @@ msgstr "Gerçek Zamanlı Akış Protokolu (RTSP) kaynağı"
 msgid "Microsoft Media Server (MMS) protocol source"
 msgstr "Microsoft Ortam Sunucusu (MMS) protokol kaynağı"
 
+#. TODO: find out how to add a comment for translators to the source code
+#. * (and tell them to make the first letter uppercase below if they move
+#. * the protocol to the middle or end of the string)
 #, c-format
 msgid "%s protocol source"
 msgstr "%s protokol kaynağı"
@@ -356,6 +366,8 @@ msgstr "Bilinmeyen kod çözücü ögesi"
 msgid "Unknown encoder element"
 msgstr "Bilinmeyen kodlama ögesi"
 
+#. we should really never get here, but we better still return
+#. * something if we do
 msgid "Plugin or element of unknown type"
 msgstr "Bilinmeyen türde eklenti veya öge"
 
@@ -386,11 +398,29 @@ msgstr "albüm sanatçısı KİMLİĞİ"
 msgid "MusicBrainz album artist ID"
 msgstr "MusicBrainz albüm sanatçısı KİMLİĞİ"
 
+msgid "release group ID"
+msgstr "serbest bırakma grubu ID'si"
+
+msgid "MusicBrainz release group ID"
+msgstr "MusicBrainz serbest bırakma grup ID'si"
+
+msgid "release track ID"
+msgstr "serbest bırakma iz ID'si"
+
+msgid "MusicBrainz release track ID"
+msgstr "MusicBrainz serbest bırakma iz ID'si"
+
 msgid "track TRM ID"
 msgstr "iz TRM KİMLİĞİ"
 
 msgid "MusicBrainz TRM ID"
 msgstr "MusicBrainz TRM BAŞLIĞI"
+
+msgid "AcoustID ID"
+msgstr "AcoustID Kimliği"
+
+msgid "AcoustID fingerprint (chromaprint)"
+msgstr "AcoustID parmak izi (kromabaskı)"
 
 msgid "capturing shutter speed"
 msgstr "deklanşör hızını yakalıyor"
@@ -543,9 +573,18 @@ msgstr ""
 "Başlangıç aygıt listesini gösterdikten sonra kapanma, eklenecek/çıkartılacak "
 "aygıtları bekle."
 
+msgid "Include devices from hidden device providers."
+msgstr "Gizli cihaz sağlayıcılarından cihazları ekleyin."
+
 #, c-format
 msgid "Volume: %.0f%%"
 msgstr "Ses: %%%.0f"
+
+msgid "Mute: on"
+msgstr "Ses kısma düzeni: açık"
+
+msgid "Mute: off"
+msgstr "Ses kısma düzeni: kapalı"
 
 msgid "Buffering..."
 msgstr "Tampon belleğe alınıyor..."
@@ -611,6 +650,9 @@ msgstr "sesi yükselt"
 msgid "volume down"
 msgstr "sesi alçalt"
 
+msgid "toggle audio mute on/off"
+msgstr "ses kısma düzenini açık/kapalı olarak geçiş yapma"
+
 msgid "increase playback rate"
 msgstr "oynatma hızını artır"
 
@@ -623,13 +665,16 @@ msgstr "oynatma yönünü değiştir"
 msgid "enable/disable trick modes"
 msgstr "hile modularını etkinleştir/devre dışı bırak"
 
-msgid "change audio track"
+#, fuzzy
+msgid "change to previous/next audio track"
 msgstr "ses izini değiştir"
 
-msgid "change video track"
+#, fuzzy
+msgid "change to previous/next video track"
 msgstr "video izini değiştir"
 
-msgid "change subtitle track"
+#, fuzzy
+msgid "change to previous/next subtitle track"
 msgstr "alt yazı izini değiştir"
 
 msgid "seek to beginning"
@@ -640,6 +685,10 @@ msgstr "klavye kısayollarını göster"
 
 msgid "Interactive mode - keyboard controls:"
 msgstr "Etkileşimli kip - klavye denetimleri:"
+
+#, c-format
+msgid "Use Windows high-resolution clock, precision: %u ms\n"
+msgstr ""
 
 msgid "Output status information and property notifications"
 msgstr "Çıktı durum bilgisi ve özellik bildirimleri"
@@ -656,6 +705,9 @@ msgstr "Kullanılacak ses alıcı (varsayılan autoaudiosink)"
 msgid "Enable gapless playback"
 msgstr "Aralıksız çalmayı etkinleştir"
 
+msgid "Enable instantaneous uri changes (only with playbin3)"
+msgstr ""
+
 msgid "Shuffle playlist"
 msgstr "Çalma listesini karıştır"
 
@@ -665,17 +717,36 @@ msgstr "Klavye aracılığıyla etkileşimli denetimi devre dışı bırak"
 msgid "Volume"
 msgstr "Ses"
 
+msgid "Start position in seconds."
+msgstr "Pozisyonu saniyeler içinde başlatın."
+
+msgid "Enable accurate seeking"
+msgstr ""
+
 msgid "Playlist file containing input media files"
 msgstr "Çalma listesi dosyası girdi ortam dosyaları içeriyor"
+
+msgid "Use the experimental instant-rate-change flag when changing rate"
+msgstr "Hızı değiştirirken deneysel anlık-hız-değiştirme bayrağını kullanma"
 
 msgid "Do not print any output (apart from errors)"
 msgstr "Herhangi bir çıktı yazdırma (hatalar dışında)"
 
-msgid "Use playbin3 pipeline"
-msgstr "playbin3 ardaşık düzenini kullan"
-
-msgid "(default varies depending on 'USE_PLAYBIN' env variable)"
+#, fuzzy
+msgid ""
+"Use playbin3 pipeline (default varies depending on 'USE_PLAYBIN' env "
+"variable)"
 msgstr "(varsayılan 'USE_PLAYBIN' env değişkenine bağlı olarak değişir)"
+
+msgid ""
+"Keep showing the last frame on EOS until quit or playlist change command "
+"(gapless is ignored)"
+msgstr ""
+"Çıkma veya çalma listesi değiştirme komutuna kadar son kareyi EOS'da "
+"göstermeye devam et (boşluksuz göz ardı edilir)"
+
+msgid "Do not print current position of pipeline"
+msgstr ""
 
 #, c-format
 msgid "Usage: %s FILE1|URI1 [FILE2|URI2] [FILE3|URI3] ..."
@@ -686,6 +757,12 @@ msgstr "Çalmak için en azından bir dosya adı veya URI sağlamalısınız."
 
 msgid "Press 'k' to see a list of keyboard shortcuts.\n"
 msgstr "Klavye kısayollarının bir listesini görmek için 'k'ye basın.\n"
+
+#~ msgid "Could not create \"uridecodebin3\" element."
+#~ msgstr "\"uridecodebin3\" ögesi oluşturulamıyor."
+
+#~ msgid "Use playbin3 pipeline"
+#~ msgstr "Playbin3 ardaşık düzenini kullan"
 
 #~ msgid "Could not create \"decodebin3\" element."
 #~ msgstr "\"decodebin3\" ögesi oluşturamıyor."

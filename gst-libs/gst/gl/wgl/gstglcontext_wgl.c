@@ -24,6 +24,7 @@
 #endif
 
 #include <gst/gst.h>
+#include <gmodule.h>
 
 #include <gst/gl/gl.h>
 #include <gst/gl/gstglfuncs.h>
@@ -37,8 +38,10 @@
 struct _GstGLContextWGLPrivate
 {
   PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
+  PFNWGLGETEXTENSIONSSTRINGARBPROC wglGetExtensionsStringARB;
 
   GstGLAPI context_api;
+  const gchar *wgl_exts;
 };
 
 #define GST_CAT_DEFAULT gst_gl_context_debug
@@ -59,6 +62,9 @@ static void gst_gl_context_wgl_destroy_context (GstGLContext * context);
 GstGLAPI gst_gl_context_wgl_get_gl_api (GstGLContext * context);
 static GstGLPlatform gst_gl_context_wgl_get_gl_platform (GstGLContext *
     context);
+static gboolean gst_gl_context_wgl_check_feature (GstGLContext * context,
+    const gchar * feature);
+GstStructure *gst_gl_context_wgl_get_config (GstGLContext * context);
 
 static void
 gst_gl_context_wgl_class_init (GstGLContextWGLClass * klass)
@@ -82,6 +88,9 @@ gst_gl_context_wgl_class_init (GstGLContextWGLClass * klass)
   context_class->get_gl_api = GST_DEBUG_FUNCPTR (gst_gl_context_wgl_get_gl_api);
   context_class->get_gl_platform =
       GST_DEBUG_FUNCPTR (gst_gl_context_wgl_get_gl_platform);
+  context_class->check_feature =
+      GST_DEBUG_FUNCPTR (gst_gl_context_wgl_check_feature);
+  context_class->get_config = GST_DEBUG_FUNCPTR (gst_gl_context_wgl_get_config);
 }
 
 static void
@@ -189,10 +198,21 @@ gst_gl_context_wgl_create_context (GstGLContext * context,
   context_wgl->priv->wglCreateContextAttribsARB =
       (PFNWGLCREATECONTEXTATTRIBSARBPROC)
       wglGetProcAddress ("wglCreateContextAttribsARB");
+  context_wgl->priv->wglGetExtensionsStringARB =
+      (PFNWGLGETEXTENSIONSSTRINGARBPROC)
+      wglGetProcAddress ("wglGetExtensionsStringARB");
 
   wglMakeCurrent (device, 0);
   wglDeleteContext (trampoline);
   trampoline = NULL;
+
+  if (context_wgl->priv->wglGetExtensionsStringARB) {
+    context_wgl->priv->wgl_exts =
+        context_wgl->priv->wglGetExtensionsStringARB (device);
+
+    GST_DEBUG_OBJECT (context, "Available WGL extensions %s",
+        GST_STR_NULL (context_wgl->priv->wgl_exts));
+  }
 
   if (context_wgl->priv->wglCreateContextAttribsARB != NULL
       && gl_api & GST_GL_API_OPENGL3) {
@@ -285,6 +305,47 @@ gst_gl_context_wgl_destroy_context (GstGLContext * context)
   context_wgl->wgl_context = NULL;
 }
 
+static GstGLConfigSurfaceType
+pfd_flags_to_surface_type (int flags)
+{
+  GstGLConfigSurfaceType ret = GST_GL_CONFIG_SURFACE_TYPE_NONE;
+
+  if (flags & PFD_DRAW_TO_WINDOW)
+    ret |= GST_GL_CONFIG_SURFACE_TYPE_WINDOW;
+  if (flags & PFD_DRAW_TO_BITMAP)
+    ret |= GST_GL_CONFIG_SURFACE_TYPE_PIXMAP;
+
+  return ret;
+}
+
+static GstStructure *
+pixel_format_to_structure (HDC hdc, int pixfmt)
+{
+  GstStructure *ret;
+  PIXELFORMATDESCRIPTOR pfd;
+
+  if (pixfmt == 0)
+    return NULL;
+
+  if (DescribePixelFormat (hdc, pixfmt, sizeof (pfd), &pfd) == 0)
+    return NULL;
+
+  ret = gst_structure_new (GST_GL_CONFIG_STRUCTURE_NAME,
+      GST_GL_CONFIG_STRUCTURE_SET_ARGS (PLATFORM, GstGLPlatform,
+          GST_GL_PLATFORM_WGL), GST_GL_CONFIG_STRUCTURE_SET_ARGS (RED_SIZE, int,
+          pfd.cRedBits), GST_GL_CONFIG_STRUCTURE_SET_ARGS (BLUE_SIZE, int,
+          pfd.cBlueBits), GST_GL_CONFIG_STRUCTURE_SET_ARGS (GREEN_SIZE, int,
+          pfd.cGreenBits), GST_GL_CONFIG_STRUCTURE_SET_ARGS (ALPHA_SIZE, int,
+          pfd.cAlphaBits), GST_GL_CONFIG_STRUCTURE_SET_ARGS (DEPTH_SIZE, int,
+          pfd.cDepthBits), GST_GL_CONFIG_STRUCTURE_SET_ARGS (STENCIL_SIZE, int,
+          pfd.cStencilBits), GST_GL_CONFIG_STRUCTURE_SET_ARGS (NATIVE_VISUAL_ID,
+          guint, pixfmt), GST_GL_CONFIG_STRUCTURE_SET_ARGS (SURFACE_TYPE,
+          GstGLConfigSurfaceType, pfd_flags_to_surface_type (pfd.dwFlags)),
+      NULL);
+
+  return ret;
+}
+
 static gboolean
 gst_gl_context_wgl_choose_format (GstGLContext * context, GError ** error)
 {
@@ -293,6 +354,7 @@ gst_gl_context_wgl_choose_format (GstGLContext * context, GError ** error)
   gint pixelformat = 0;
   gboolean res = FALSE;
   HDC device;
+  GstStructure *config;
 
   window = gst_gl_context_get_window (context);
   gst_gl_window_win32_create_window (GST_GL_WINDOW_WIN32 (window), error);
@@ -335,6 +397,10 @@ gst_gl_context_wgl_choose_format (GstGLContext * context, GError ** error)
         "Failed to choose a pixel format");
     return FALSE;
   }
+
+  config = pixel_format_to_structure (device, pixelformat);
+  GST_INFO_OBJECT (context, "chosen config %" GST_PTR_FORMAT, config);
+  gst_structure_free (config);
 
   res = SetPixelFormat (device, pixelformat, &pfd);
 
@@ -395,14 +461,51 @@ gst_gl_context_wgl_get_gl_platform (GstGLContext * context)
   return GST_GL_PLATFORM_WGL;
 }
 
+static gboolean
+gst_gl_context_wgl_check_feature (GstGLContext * context, const gchar * feature)
+{
+  GstGLContextWGL *context_wgl = GST_GL_CONTEXT_WGL (context);
+
+  return gst_gl_check_extension (feature, context_wgl->priv->wgl_exts);
+}
+
+static GOnce module_opengl_dll_gonce = G_ONCE_INIT;
+static GModule *module_opengl_dll;
+
+static gpointer
+load_opengl_dll_module (gpointer user_data)
+{
+#ifdef GST_GL_LIBGL_MODULE_NAME
+  module_opengl_dll =
+      g_module_open (GST_GL_LIBGL_MODULE_NAME, G_MODULE_BIND_LAZY);
+#else
+  if (g_strcmp0 (G_MODULE_SUFFIX, "dll") == 0)
+    module_opengl_dll = g_module_open ("opengl32.dll", G_MODULE_BIND_LAZY);
+
+  /* This automatically handles the suffix and even .la files */
+  if (!module_opengl_dll)
+    module_opengl_dll = g_module_open ("opengl32", G_MODULE_BIND_LAZY);
+#endif
+
+  return NULL;
+}
+
 gpointer
 gst_gl_context_wgl_get_proc_address (GstGLAPI gl_api, const gchar * name)
 {
-  gpointer result;
+  gpointer result = NULL;
 
-  if (!(result = gst_gl_context_default_get_proc_address (gl_api, name))) {
-    result = wglGetProcAddress ((LPCSTR) name);
+  if (gl_api & (GST_GL_API_OPENGL | GST_GL_API_OPENGL3)) {
+    g_once (&module_opengl_dll_gonce, load_opengl_dll_module, NULL);
+    if (module_opengl_dll)
+      g_module_symbol (module_opengl_dll, name, &result);
+
+    if (!result) {
+      result = wglGetProcAddress ((LPCSTR) name);
+    }
   }
+  if (!result)
+    result = gst_gl_context_default_get_proc_address (gl_api, name);
 
   return result;
 }
@@ -411,4 +514,21 @@ guintptr
 gst_gl_context_wgl_get_current_context (void)
 {
   return (guintptr) wglGetCurrentContext ();
+}
+
+GstStructure *
+gst_gl_context_wgl_get_config (GstGLContext * context)
+{
+  GstGLWindow *window;
+  int pixfmt;
+  HDC hdc;
+
+  window = gst_gl_context_get_window (context);
+  hdc = (HDC) gst_gl_window_get_display (window);
+
+  pixfmt = GetPixelFormat (hdc);
+
+  gst_object_unref (window);
+
+  return pixel_format_to_structure (hdc, pixfmt);
 }

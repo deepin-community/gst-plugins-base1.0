@@ -55,6 +55,10 @@ GST_DEBUG_CATEGORY_STATIC (GST_CAT_GL_MEMORY);
 G_DEFINE_TYPE (GstGLMemoryEGLAllocator, gst_gl_memory_egl_allocator,
     GST_TYPE_GL_MEMORY_ALLOCATOR);
 
+#ifndef GST_REMOVE_DEPRECATED
+GST_DEFINE_MINI_OBJECT_TYPE (GstGLMemoryEGL, gst_gl_memory_egl);
+#endif
+
 /**
  * gst_is_gl_memory_egl:
  * @mem: a #GstMemory to test
@@ -200,6 +204,13 @@ _gl_mem_create (GstGLMemoryEGL * gl_mem, GError ** error)
     }
   } else {
     guint gl_target = gst_gl_texture_target_to_gl (gl_mem->mem.tex_target);
+
+    if (!gl->EGLImageTargetTexture2D) {
+      g_set_error (error, GST_GL_CONTEXT_ERROR, GST_GL_CONTEXT_ERROR_FAILED,
+          "Required function glEGLImageTargetTexture2D() is not available for "
+          "attaching an EGLImage to a texture");
+      return FALSE;
+    }
 
     gl->ActiveTexture (GL_TEXTURE0 + gl_mem->mem.plane);
     gl->BindTexture (gl_target, gl_mem->mem.tex_id);

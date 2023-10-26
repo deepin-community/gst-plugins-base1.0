@@ -96,7 +96,7 @@
 #include <gst/tag/tag.h>
 #include <gst/audio/audio.h>
 #include "gstaudiocdsrc.h"
-#include "gst/gst-i18n-plugin.h"
+#include <glib/gi18n-lib.h>
 
 GST_DEBUG_CATEGORY_STATIC (gst_audio_cd_src_debug);
 #define GST_CAT_DEFAULT gst_audio_cd_src_debug
@@ -1764,7 +1764,7 @@ gst_audio_cd_src_create (GstPushSrc * pushsrc, GstBuffer ** buffer)
         GST_SECOND, 44100);
   }
 
-  GST_BUFFER_TIMESTAMP (buf) = position;
+  GST_BUFFER_PTS (buf) = position;
   GST_BUFFER_DURATION (buf) = duration;
 
   GST_LOG_OBJECT (src, "pushing sector %d with timestamp %" GST_TIME_FORMAT,

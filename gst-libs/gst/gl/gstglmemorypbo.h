@@ -59,6 +59,16 @@ struct _GstGLMemoryPBO
  */
 #define GST_GL_MEMORY_PBO_ALLOCATOR_NAME   "GLMemoryPBO"
 
+/**
+ * GST_TYPE_GL_MEMORY_PBO
+ *
+ * Since: 1.20
+ * Deprecated: 1.22: This type has no use.
+ */
+#define GST_TYPE_GL_MEMORY_PBO (gst_gl_memory_pbo_get_type())
+GST_GL_DEPRECATED
+GType gst_gl_memory_pbo_get_type(void);
+
 GST_GL_API
 void          gst_gl_memory_pbo_init_once               (void);
 GST_GL_API

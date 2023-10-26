@@ -27,7 +27,7 @@
 #include <locale.h>
 
 #include <gst/gst.h>
-#include <gst/gst-i18n-app.h>
+#include <glib/gi18n.h>
 #include <gst/audio/audio.h>
 #include <gst/video/video.h>
 #include <gst/pbutils/pbutils.h>
@@ -38,6 +38,16 @@
 #include <string.h>
 
 #include <glib/gprintf.h>
+
+#ifdef HAVE_WINMM
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <mmsystem.h>
+#endif
+
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
 
 #include "gst-play-kb.h"
 
@@ -55,8 +65,14 @@ typedef enum
   GST_PLAY_TRICK_MODE_DEFAULT_NO_AUDIO,
   GST_PLAY_TRICK_MODE_KEY_UNITS,
   GST_PLAY_TRICK_MODE_KEY_UNITS_NO_AUDIO,
-  GST_PLAY_TRICK_MODE_INSTANT_RATE,
-  GST_PLAY_TRICK_MODE_LAST
+  GST_PLAY_TRICK_MODE_LAST,
+
+  /* The instant-rate setting is a flag,
+   * applied on top of the trick-mode enum value.
+   * It needs to have a 2^n value bigger than 
+   * any of the enum values so setting it
+   * won't affect the trickmode value */
+  GST_PLAY_TRICK_MODE_INSTANT_RATE = (1 << 3)
 } GstPlayTrickMode;
 
 typedef enum
@@ -92,6 +108,7 @@ typedef struct
 
   gboolean buffering;
   gboolean is_live;
+  gboolean initial_file;
 
   GstState desired_state;       /* as per user interaction, PAUSED or PLAYING */
 
@@ -99,9 +116,15 @@ typedef struct
 
   /* configuration */
   gboolean gapless;
+  gboolean instant_uri;
 
   GstPlayTrickMode trick_mode;
   gdouble rate;
+  gdouble start_position;
+  gboolean accurate_seeks;
+
+  /* keyboard state tracking */
+  gboolean shift_pressed;
 } GstPlay;
 
 static gboolean quiet = FALSE;
@@ -150,8 +173,9 @@ gst_play_printf (const gchar * format, ...)
 
 static GstPlay *
 play_new (gchar ** uris, const gchar * audio_sink, const gchar * video_sink,
-    gboolean gapless, gdouble initial_volume, gboolean verbose,
-    const gchar * flags_string, gboolean use_playbin3)
+    gboolean gapless, gboolean instant_uri, gdouble initial_volume,
+    gboolean verbose, const gchar * flags_string, gboolean use_playbin3,
+    gdouble start_position, gboolean no_position, gboolean accurate_seeks)
 {
   GstElement *sink, *playbin;
   GstPlay *play;
@@ -231,8 +255,9 @@ play_new (gchar ** uris, const gchar * audio_sink, const gchar * video_sink,
   play->bus_watch = gst_bus_add_watch (GST_ELEMENT_BUS (play->playbin),
       play_bus_msg, play);
 
-  /* FIXME: make configurable incl. 0 for disable */
-  play->timeout = g_timeout_add (100, play_timeout, play);
+  if (!no_position) {
+    play->timeout = g_timeout_add (100, play_timeout, play);
+  }
 
   play->missing = NULL;
   play->buffering = FALSE;
@@ -246,12 +271,18 @@ play_new (gchar ** uris, const gchar * audio_sink, const gchar * video_sink,
         G_CALLBACK (play_about_to_finish), play);
   }
 
+  play->initial_file = TRUE;
+  if (use_playbin3) {
+    play->instant_uri = instant_uri;
+    g_object_set (G_OBJECT (play->playbin), "instant-uri", instant_uri, NULL);
+  }
   if (initial_volume != -1)
     play_set_relative_volume (play, initial_volume - 1.0);
 
   play->rate = 1.0;
   play->trick_mode = GST_PLAY_TRICK_MODE_NONE;
-
+  play->start_position = start_position;
+  play->accurate_seeks = accurate_seeks;
   return play;
 }
 
@@ -268,7 +299,8 @@ play_free (GstPlay * play)
   gst_object_unref (play->playbin);
 
   g_source_remove (play->bus_watch);
-  g_source_remove (play->timeout);
+  if (play->timeout != 0)
+    g_source_remove (play->timeout);
   g_main_loop_unref (play->loop);
 
   g_strfreev (play->uris);
@@ -313,6 +345,23 @@ play_set_relative_volume (GstPlay * play, gdouble volume_step)
   gst_print ("                  \n");
 }
 
+static void
+play_toggle_audio_mute (GstPlay * play)
+{
+  gboolean mute;
+
+  mute = gst_stream_volume_get_mute (GST_STREAM_VOLUME (play->playbin));
+
+  mute = !mute;
+  gst_stream_volume_set_mute (GST_STREAM_VOLUME (play->playbin), mute);
+
+  if (mute)
+    gst_print (_("Mute: on"));
+  else
+    gst_print (_("Mute: off"));
+  gst_print ("                  \n");
+}
+
 /* returns TRUE if something was installed and we should restart playback */
 static gboolean
 play_install_missing_plugins (GstPlay * play)
@@ -339,6 +388,11 @@ play_bus_msg (GstBus * bus, GstMessage * msg, gpointer user_data)
         gst_print ("New plugins installed, trying again...\n");
         --play->cur_idx;
         play_next (play);
+      }
+      if (play->start_position > 0.0) {
+        play_do_seek (play, play->start_position * GST_SECOND,
+            play->rate, play->trick_mode);
+        play->start_position = 0;
       }
       break;
     case GST_MESSAGE_BUFFERING:{
@@ -463,6 +517,8 @@ play_bus_msg (GstBus * bus, GstMessage * msg, gpointer user_data)
             case GST_NAVIGATION_EVENT_KEY_PRESS:
             {
               const gchar *key;
+              const gchar *key_input;
+              gchar key_adjusted[2];
 
               if (gst_navigation_event_parse_key_event (ev, &key)) {
                 GST_INFO ("Key press: %s", key);
@@ -475,13 +531,49 @@ play_bus_msg (GstBus * bus, GstMessage * msg, gpointer user_data)
                   key = GST_PLAY_KB_ARROW_UP;
                 else if (strcmp (key, "Down") == 0)
                   key = GST_PLAY_KB_ARROW_DOWN;
-                else if (strcmp (key, "space") == 0 ||
-                    strcmp (key, "Space") == 0)
-                  key = " ";
-                else if (strlen (key) > 1)
+                else if (strncmp (key, "Shift", 5) == 0) {
+                  play->shift_pressed = TRUE;
                   break;
+                } else if (strcmp (key, "space") == 0 ||
+                    strcmp (key, "Space") == 0) {
+                  key = " ";
+                } else if (strcmp (key, "minus") == 0) {
+                  key = "-";
+                } else if (strcmp (key, "plus") == 0
+                    /* TODO: That's not universally correct at all, but still handy */
+                    || (strcmp (key, "equal") == 0 && play->shift_pressed)) {
+                  key = "+";
+                } else if (strlen (key) > 1) {
+                  break;
+                }
 
-                keyboard_cb (key, user_data);
+                /* In the case of a simple single-char input,
+                 * make it lower or upper as needed, and
+                 * send that instead */
+                if (key[0] != '\0' && key[1] == '\0') {
+                  if (play->shift_pressed)
+                    key_adjusted[0] = g_ascii_toupper (key[0]);
+                  else
+                    key_adjusted[0] = g_ascii_tolower (key[0]);
+                  key_adjusted[1] = '\0';
+                  key_input = key_adjusted;
+                } else {
+                  key_input = key;
+                }
+
+                keyboard_cb (key_input, user_data);
+              }
+              break;
+            }
+            case GST_NAVIGATION_EVENT_KEY_RELEASE:
+            {
+              const gchar *key;
+
+              if (gst_navigation_event_parse_key_event (ev, &key)) {
+                GST_INFO ("Key release: %s", key);
+                if (strncmp (key, "Shift", 5) == 0) {
+                  play->shift_pressed = FALSE;
+                }
               }
               break;
             }
@@ -544,8 +636,9 @@ play_bus_msg (GstBus * bus, GstMessage * msg, gpointer user_data)
 
       if (collection) {
         g_mutex_lock (&play->selection_lock);
-        gst_object_replace ((GstObject **) & play->collection,
-            (GstObject *) collection);
+        if (play->collection)
+          gst_object_unref (play->collection);
+        play->collection = collection;
         g_mutex_unlock (&play->selection_lock);
       }
       break;
@@ -583,7 +676,7 @@ play_bus_msg (GstBus * bus, GstMessage * msg, gpointer user_data)
             } else if (type & GST_STREAM_TYPE_TEXT) {
               play->cur_text_sid = g_strdup (stream_id);
             } else {
-              gst_print ("Unknown stream type with stream-id %s", stream_id);
+              gst_print ("Unknown stream type with stream-id %s\n", stream_id);
             }
             gst_object_unref (stream);
           }
@@ -632,7 +725,7 @@ play_timeout (gpointer user_data)
     status[len] = '\0';
   }
 
-  if (pos >= 0 && dur > 0) {
+  if (pos >= 0) {
     gchar dstr[32], pstr[32];
 
     /* FIXME: pretty print in nicer format */
@@ -668,7 +761,8 @@ play_uri (GstPlay * play, const gchar * next_uri)
 {
   gchar *loc;
 
-  gst_element_set_state (play->playbin, GST_STATE_READY);
+  if (!play->instant_uri || play->initial_file)
+    gst_element_set_state (play->playbin, GST_STATE_READY);
   play_reset (play);
 
   loc = play_uri_get_display_name (play, next_uri);
@@ -677,23 +771,26 @@ play_uri (GstPlay * play, const gchar * next_uri)
 
   g_object_set (play->playbin, "uri", next_uri, NULL);
 
-  switch (gst_element_set_state (play->playbin, GST_STATE_PAUSED)) {
-    case GST_STATE_CHANGE_FAILURE:
-      /* ignore, we should get an error message posted on the bus */
-      break;
-    case GST_STATE_CHANGE_NO_PREROLL:
-      gst_print ("Pipeline is live.\n");
-      play->is_live = TRUE;
-      break;
-    case GST_STATE_CHANGE_ASYNC:
-      gst_print ("Prerolling...\r");
-      break;
-    default:
-      break;
-  }
+  if (!play->instant_uri || play->initial_file) {
+    switch (gst_element_set_state (play->playbin, GST_STATE_PAUSED)) {
+      case GST_STATE_CHANGE_FAILURE:
+        /* ignore, we should get an error message posted on the bus */
+        break;
+      case GST_STATE_CHANGE_NO_PREROLL:
+        gst_print ("Pipeline is live.\n");
+        play->is_live = TRUE;
+        break;
+      case GST_STATE_CHANGE_ASYNC:
+        gst_print ("Prerolling...\r");
+        break;
+      default:
+        break;
+    }
 
-  if (play->desired_state != GST_STATE_PAUSED)
-    gst_element_set_state (play->playbin, play->desired_state);
+    if (play->desired_state != GST_STATE_PAUSED)
+      gst_element_set_state (play->playbin, play->desired_state);
+  }
+  play->initial_file = FALSE;
 }
 
 /* returns FALSE if we have reached the end of the playlist */
@@ -970,14 +1067,17 @@ play_do_seek (GstPlay * play, gint64 pos, gdouble rate, GstPlayTrickMode mode)
 
   /* No instant rate change, need to do a flushing seek */
   seek_flags |= GST_SEEK_FLAG_FLUSH;
+
+  /* Seek to keyframe if not doing accurate seeks */
+  seek_flags |=
+      play->accurate_seeks ? GST_SEEK_FLAG_ACCURATE : GST_SEEK_FLAG_KEY_UNIT;
+
   if (rate >= 0)
-    seek = gst_event_new_seek (rate, GST_FORMAT_TIME,
-        seek_flags | GST_SEEK_FLAG_ACCURATE,
+    seek = gst_event_new_seek (rate, GST_FORMAT_TIME, seek_flags,
         /* start */ GST_SEEK_TYPE_SET, pos,
         /* stop */ GST_SEEK_TYPE_SET, GST_CLOCK_TIME_NONE);
   else
-    seek = gst_event_new_seek (rate, GST_FORMAT_TIME,
-        seek_flags | GST_SEEK_FLAG_ACCURATE,
+    seek = gst_event_new_seek (rate, GST_FORMAT_TIME, seek_flags,
         /* start */ GST_SEEK_TYPE_SET, 0,
         /* stop */ GST_SEEK_TYPE_SET, pos);
 
@@ -1098,7 +1198,8 @@ play_get_nth_stream_in_collection (GstPlay * play, guint index,
 }
 
 static void
-play_cycle_track_selection (GstPlay * play, GstPlayTrackType track_type)
+play_cycle_track_selection (GstPlay * play, GstPlayTrackType track_type,
+    gboolean forward)
 {
   const gchar *prop_cur, *prop_n, *prop_get, *name;
   gint cur = -1, n = -1;
@@ -1210,19 +1311,34 @@ play_cycle_track_selection (GstPlay * play, GstPlayTrackType track_type)
 
   if (play->is_playbin3) {
     if (n > 0) {
-      if (cur < 0)
-        cur = 0;
-      else
-        cur = (cur + 1) % (n + 1);
+      if (forward) {
+        if (cur < 0)
+          cur = 0;
+        else
+          cur = (cur + 1) % (n + 1);
+      } else {
+        if (cur <= 0)
+          cur = n;
+        else
+          cur = (cur - 1) % (n + 1);
+      }
     }
   } else {
     g_object_get (play->playbin, prop_cur, &cur, prop_n, &n, "flags",
         &cur_flags, NULL);
 
-    if (!(cur_flags & flag))
-      cur = 0;
-    else
-      cur = (cur + 1) % (n + 1);
+    if (forward) {
+      if (!(cur_flags & flag))
+        cur = 0;
+      else
+        cur = (cur + 1) % (n + 1);
+
+    } else {
+      if (cur <= 0)
+        cur = n;
+      else
+        cur = (cur - 1) % (n + 1);
+    }
   }
 
   if (n < 1) {
@@ -1302,6 +1418,7 @@ play_cycle_track_selection (GstPlay * play, GstPlayTrackType track_type)
 static void
 print_keyboard_help (void)
 {
+  /* *INDENT-OFF* */
   static struct
   {
     const gchar *key_desc;
@@ -1316,15 +1433,17 @@ print_keyboard_help (void)
     "\342\206\220", N_("seek backward")}, {
     "\342\206\221", N_("volume up")}, {
     "\342\206\223", N_("volume down")}, {
+    "m", N_("toggle audio mute on/off")}, {
     "+", N_("increase playback rate")}, {
     "-", N_("decrease playback rate")}, {
     "d", N_("change playback direction")}, {
     "t", N_("enable/disable trick modes")}, {
-    "a", N_("change audio track")}, {
-    "v", N_("change video track")}, {
-    "s", N_("change subtitle track")}, {
+    "A/a", N_("change to previous/next audio track")}, {
+    "V/v", N_("change to previous/next video track")}, {
+    "S/s", N_("change to previous/next subtitle track")}, {
     "0", N_("seek to beginning")}, {
   "k", N_("show keyboard shortcuts")},};
+  /* *INDENT-ON* */
   guint i, chars_to_pad, desc_len, max_desc_len = 0;
 
   gst_print ("\n\n%s\n\n", _("Interactive mode - keyboard controls:"));
@@ -1350,9 +1469,12 @@ keyboard_cb (const gchar * key_input, gpointer user_data)
   GstPlay *play = (GstPlay *) user_data;
   gchar key = '\0';
 
-  /* only want to switch/case on single char, not first char of string */
-  if (key_input[0] != '\0' && key_input[1] == '\0')
-    key = g_ascii_tolower (key_input[0]);
+  /* Switch on the first char for single char inputs,
+   * otherwise leave key = '\0' to fall through to
+   * the default case below */
+  if (key_input[0] != '\0' && key_input[1] == '\0') {
+    key = key_input[0];
+  }
 
   switch (key) {
     case 'k':
@@ -1408,16 +1530,23 @@ keyboard_cb (const gchar * key_input, gpointer user_data)
         break;
       }
     case 'a':
-      play_cycle_track_selection (play, GST_PLAY_TRACK_TYPE_AUDIO);
+    case 'A':
+      play_cycle_track_selection (play, GST_PLAY_TRACK_TYPE_AUDIO, key == 'a');
       break;
     case 'v':
-      play_cycle_track_selection (play, GST_PLAY_TRACK_TYPE_VIDEO);
+    case 'V':
+      play_cycle_track_selection (play, GST_PLAY_TRACK_TYPE_VIDEO, key == 'v');
       break;
     case 's':
-      play_cycle_track_selection (play, GST_PLAY_TRACK_TYPE_SUBTITLE);
+    case 'S':
+      play_cycle_track_selection (play, GST_PLAY_TRACK_TYPE_SUBTITLE,
+          key == 's');
       break;
     case '0':
       play_do_seek (play, 0, play->rate, play->trick_mode);
+      break;
+    case 'm':
+      play_toggle_audio_mute (play);
       break;
     default:
       if (strcmp (key_input, GST_PLAY_KB_ARROW_RIGHT) == 0) {
@@ -1437,8 +1566,45 @@ keyboard_cb (const gchar * key_input, gpointer user_data)
   }
 }
 
-int
-main (int argc, char **argv)
+#ifdef HAVE_WINMM
+static guint
+enable_winmm_timer_resolution (void)
+{
+  TIMECAPS time_caps;
+  guint resolution = 0;
+  MMRESULT res;
+
+  res = timeGetDevCaps (&time_caps, sizeof (TIMECAPS));
+  if (res != TIMERR_NOERROR) {
+    g_warning ("timeGetDevCaps() returned non-zero code %d", res);
+    return 0;
+  }
+
+  resolution = MIN (MAX (time_caps.wPeriodMin, 1), time_caps.wPeriodMax);
+  res = timeBeginPeriod (resolution);
+  if (res != TIMERR_NOERROR) {
+    g_warning ("timeBeginPeriod() returned non-zero code %d", res);
+    return 0;
+  }
+
+  gst_println (_("Use Windows high-resolution clock, precision: %u ms\n"),
+      resolution);
+
+  return resolution;
+}
+
+static void
+clear_winmm_timer_resolution (guint resolution)
+{
+  if (resolution == 0)
+    return;
+
+  timeEndPeriod (resolution);
+}
+#endif
+
+static int
+real_main (int argc, char **argv)
 {
   GstPlay *play;
   GPtrArray *playlist;
@@ -1446,8 +1612,11 @@ main (int argc, char **argv)
   gboolean print_version = FALSE;
   gboolean interactive = TRUE;
   gboolean gapless = FALSE;
+  gboolean instant_uri = FALSE;
   gboolean shuffle = FALSE;
   gdouble volume = -1;
+  gdouble start_position = 0;
+  gboolean accurate_seeks = FALSE;
   gchar **filenames = NULL;
   gchar *audio_sink = NULL;
   gchar *video_sink = NULL;
@@ -1458,6 +1627,10 @@ main (int argc, char **argv)
   GOptionContext *ctx;
   gchar *playlist_file = NULL;
   gboolean use_playbin3 = FALSE;
+  gboolean no_position = FALSE;
+#ifdef HAVE_WINMM
+  guint winmm_timer_resolution = 0;
+#endif
   GOptionEntry options[] = {
     {"verbose", 'v', 0, G_OPTION_ARG_NONE, &verbose,
         N_("Output status information and property notifications"), NULL},
@@ -1472,6 +1645,8 @@ main (int argc, char **argv)
         N_("Audio sink to use (default is autoaudiosink)"), NULL},
     {"gapless", 0, 0, G_OPTION_ARG_NONE, &gapless,
         N_("Enable gapless playback"), NULL},
+    {"instant-uri", 0, 0, G_OPTION_ARG_NONE, &instant_uri,
+        N_("Enable instantaneous uri changes (only with playbin3)"), NULL},
     {"shuffle", 0, 0, G_OPTION_ARG_NONE, &shuffle,
         N_("Shuffle playlist"), NULL},
     {"no-interactive", 0, G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE,
@@ -1479,6 +1654,10 @@ main (int argc, char **argv)
         N_("Disable interactive control via the keyboard"), NULL},
     {"volume", 0, 0, G_OPTION_ARG_DOUBLE, &volume,
         N_("Volume"), NULL},
+    {"start-position", 's', 0, G_OPTION_ARG_DOUBLE, &start_position,
+        N_("Start position in seconds."), NULL},
+    {"accurate-seeks", 'a', 0, G_OPTION_ARG_NONE, &accurate_seeks,
+        N_("Enable accurate seeking"), NULL},
     {"playlist", 0, 0, G_OPTION_ARG_FILENAME, &playlist_file,
         N_("Playlist file containing input media files"), NULL},
     {"instant-rate-changes", 'i', 0, G_OPTION_ARG_NONE, &instant_rate_changes,
@@ -1488,13 +1667,16 @@ main (int argc, char **argv)
     {"quiet", 'q', 0, G_OPTION_ARG_NONE, &quiet,
         N_("Do not print any output (apart from errors)"), NULL},
     {"use-playbin3", 0, 0, G_OPTION_ARG_NONE, &use_playbin3,
-          N_("Use playbin3 pipeline")
-          N_("(default varies depending on 'USE_PLAYBIN' env variable)"),
+          N_("Use playbin3 pipeline "
+              "(default varies depending on 'USE_PLAYBIN' env variable)"),
         NULL},
     {"wait-on-eos", 0, 0, G_OPTION_ARG_NONE, &wait_on_eos,
           N_
           ("Keep showing the last frame on EOS until quit or playlist change command "
               "(gapless is ignored)"),
+        NULL},
+    {"no-position", 0, 0, G_OPTION_ARG_NONE, &no_position,
+          N_("Do not print current position of pipeline"),
         NULL},
     {G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_FILENAME_ARRAY, &filenames, NULL},
     {NULL}
@@ -1511,17 +1693,27 @@ main (int argc, char **argv)
   g_set_prgname ("gst-play-" GST_API_VERSION);
   /* Ensure XInitThreads() is called if/when needed */
   g_setenv ("GST_GL_XINITTHREADS", "1", TRUE);
+  g_setenv ("GST_XINITTHREADS", "1", TRUE);
 
   ctx = g_option_context_new ("FILE1|URI1 [FILE2|URI2] [FILE3|URI3] ...");
   g_option_context_add_main_entries (ctx, options, GETTEXT_PACKAGE);
   g_option_context_add_group (ctx, gst_init_get_option_group ());
-  if (!g_option_context_parse (ctx, &argc, &argv, &err)) {
+#ifdef G_OS_WIN32
+  if (!g_option_context_parse_strv (ctx, &argv, &err))
+#else
+  if (!g_option_context_parse (ctx, &argc, &argv, &err))
+#endif
+  {
     gst_print ("Error initializing: %s\n", GST_STR_NULL (err->message));
     g_option_context_free (ctx);
     g_clear_error (&err);
     return 1;
   }
   g_option_context_free (ctx);
+
+#ifdef G_OS_WIN32
+  argc = g_strv_length (argv);
+#endif
 
   GST_DEBUG_CATEGORY_INIT (play_debug, "play", 0, "gst-play");
 
@@ -1604,14 +1796,32 @@ main (int argc, char **argv)
     shuffle_uris (uris, num);
 
   /* prepare */
-  play = play_new (uris, audio_sink, video_sink, gapless, volume, verbose,
-      flags, use_playbin3);
+  play =
+      play_new (uris, audio_sink, video_sink, gapless, instant_uri, volume,
+      verbose, flags, use_playbin3, start_position, no_position,
+      accurate_seeks);
 
   if (play == NULL) {
     gst_printerr
         ("Failed to create 'playbin' element. Check your GStreamer installation.\n");
     return EXIT_FAILURE;
   }
+#ifdef HAVE_WINMM
+  /* Enable high-precision clock which will improve accuracy of various
+   * Windows timer APIs (e.g., Sleep()), and it will increase the precision
+   * of GstSystemClock as well
+   */
+
+  /* NOTE: Once timer resolution is updated via timeBeginPeriod(),
+   * application should undo it by calling timeEndPeriod()
+   *
+   * Prior to Windows 10, version 2004, timeBeginPeriod() affects global
+   * Windows setting (meaning that it will affect other processes),
+   * but starting with Windows 10, version 2004, this function no longer
+   * affects global timer resolution
+   */
+  winmm_timer_resolution = enable_winmm_timer_resolution ();
+#endif
 
   if (interactive) {
     if (gst_play_kb_set_key_handler (keyboard_cb, play)) {
@@ -1625,6 +1835,11 @@ main (int argc, char **argv)
   /* play */
   do_play (play);
 
+#ifdef HAVE_WINMM
+  /* Undo timeBeginPeriod() if required */
+  clear_winmm_timer_resolution (winmm_timer_resolution);
+#endif
+
   /* clean up */
   play_free (play);
 
@@ -1634,4 +1849,26 @@ main (int argc, char **argv)
   gst_print ("\n");
   gst_deinit ();
   return 0;
+}
+
+int
+main (int argc, char *argv[])
+{
+  int ret;
+
+#ifdef G_OS_WIN32
+  argv = g_win32_get_command_line ();
+#endif
+
+#if defined(__APPLE__) && TARGET_OS_MAC && !TARGET_OS_IPHONE
+  ret = gst_macos_main ((GstMainFunc) real_main, argc, argv, NULL);
+#else
+  ret = real_main (argc, argv);
+#endif
+
+#ifdef G_OS_WIN32
+  g_strfreev (argv);
+#endif
+
+  return ret;
 }

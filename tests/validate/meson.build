@@ -17,16 +17,23 @@ tests = [
     'videorate/rate_0_5_with_decoder',
     'videorate/rate_2_0',
     'videorate/rate_2_0_with_decoder',
+    'videorate/duplicate_on_eos',
+    'videorate/duplicate_on_eos_disbaled',
+    'videorate/duplicate_on_eos_half_sec',
+    'videorate/fill_segment_after_caps_changed_before_eos',
     'compositor/renogotiate_failing_unsupported_src_format',
+    'giosrc/read-growing-file',
+    'encodebin/set-encoder-properties',
+    'uridecodebin/expose_raw_pad_caps',
 ]
 
 env = environment()
-env.set('GST_PLUGIN_PATH_1_0', meson.build_root(), pluginsdirs)
+env.set('GST_PLUGIN_PATH_1_0', meson.global_build_root(), pluginsdirs)
 env.set('GST_PLUGIN_SYSTEM_PATH_1_0', '')
 env.set('GST_REGISTRY', '@0@/@1@.registry'.format(meson.current_build_dir(), 'validate'))
 env.set('GST_PLUGIN_SCANNER_1_0', gst_plugin_scanner_path)
 env.set('GST_PLUGIN_LOADING_WHITELIST', 'gstreamer', 'gst-validate',
-    'gst-plugins-base@' + meson.build_root())
+    'gst-plugins-base@' + meson.project_build_root())
 
 foreach t: tests
     test_dir_name = t.split('/')

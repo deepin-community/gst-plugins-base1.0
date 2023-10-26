@@ -61,6 +61,7 @@ G_DECLARE_FINAL_TYPE (GstVideoTestSrc, gst_video_test_src, GST, VIDEO_TEST_SRC,
  * @GST_VIDEO_TEST_SRC_SPOKES: Spokes
  * @GST_VIDEO_TEST_SRC_GRADIENT: Gradient
  * @GST_VIDEO_TEST_SRC_COLORS: All colors
+ * @GST_VIDEO_TEST_SRC_SMPTE_RP_219: SMPTE test pattern, RP 219 conformant (Since: 1.20)
  *
  * The test pattern to produce.
  *
@@ -106,7 +107,16 @@ typedef enum {
   GST_VIDEO_TEST_SRC_PINWHEEL,
   GST_VIDEO_TEST_SRC_SPOKES,
   GST_VIDEO_TEST_SRC_GRADIENT,
-  GST_VIDEO_TEST_SRC_COLORS
+  GST_VIDEO_TEST_SRC_COLORS,
+
+  /**
+   * GstVideoTestSrcPattern::smpte-rp-219:
+   *
+   * SMPTE test pattern, RP 219 conformant
+   *
+   * Since: 1.20
+   */
+  GST_VIDEO_TEST_SRC_SMPTE_RP_219,
 } GstVideoTestSrcPattern;
 
 typedef enum {
@@ -196,7 +206,13 @@ struct _GstVideoTestSrc {
   guint n_lines;
   gint offset;
   gpointer *lines;
+
+  /* cached buffer used for static patterns that don't change */
+  GstBuffer *cached;
+  gboolean have_static_pattern;
 };
+
+GST_ELEMENT_REGISTER_DECLARE (videotestsrc);
 
 G_END_DECLS
 

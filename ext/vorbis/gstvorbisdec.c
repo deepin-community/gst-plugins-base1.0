@@ -44,13 +44,14 @@
 #include <gst/audio/audio.h>
 #include <gst/tag/tag.h>
 
+#include "gstvorbiselements.h"
 #include "gstvorbiscommon.h"
 
 #ifndef TREMOR
-GST_DEBUG_CATEGORY_EXTERN (vorbisdec_debug);
+GST_DEBUG_CATEGORY_STATIC (vorbisdec_debug);
 #define GST_CAT_DEFAULT vorbisdec_debug
 #else
-GST_DEBUG_CATEGORY_EXTERN (ivorbisdec_debug);
+GST_DEBUG_CATEGORY_STATIC (ivorbisdec_debug);
 #define GST_CAT_DEFAULT ivorbisdec_debug
 #endif
 
@@ -69,6 +70,19 @@ GST_STATIC_PAD_TEMPLATE ("sink",
 
 #define gst_vorbis_dec_parent_class parent_class
 G_DEFINE_TYPE (GstVorbisDec, gst_vorbis_dec, GST_TYPE_AUDIO_DECODER);
+#ifndef TREMOR
+GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (vorbisdec, "vorbisdec",
+    GST_RANK_PRIMARY, GST_TYPE_VORBIS_DEC,
+    GST_DEBUG_CATEGORY_INIT (vorbisdec_debug, "vorbisdec", 0,
+        "vorbis decoding element");
+    vorbis_element_init (plugin));
+#else
+GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (ivorbisdec, "ivorbisdec",
+    GST_RANK_SECONDARY, GST_TYPE_VORBIS_DEC,
+    GST_DEBUG_CATEGORY_INIT (ivorbisdec_debug, "ivorbisdec", 0,
+        "vorbis decoding element (integer decoder)");
+    vorbis_element_init (plugin));
+#endif
 
 static void vorbis_dec_finalize (GObject * object);
 
@@ -341,7 +355,7 @@ vorbis_handle_header_packet (GstVorbisDec * vd, ogg_packet * packet)
       break;
     default:
       /* ignore */
-      g_warning ("unknown vorbis header packet found");
+      GST_WARNING_OBJECT (vd, "unknown vorbis header packet found");
       res = GST_FLOW_OK;
       break;
   }

@@ -91,6 +91,18 @@
 #define DRM_FORMAT_RG1616       fourcc_code('R', 'G', '3', '2')
 #endif
 
+#ifndef DRM_FORMAT_ABGR2101010
+#define DRM_FORMAT_ABGR2101010    fourcc_code('A', 'B', '3', '0')
+#endif
+
+#ifndef DRM_FORMAT_RGBA1010102
+#define DRM_FORMAT_RGBA1010102    fourcc_code('R', 'A', '3', '0')
+#endif
+
+#ifndef DRM_FORMAT_ABGR16161616
+#define DRM_FORMAT_ABGR16161616   fourcc_code('A', 'B', '4', '8')
+#endif
+
 #ifndef EGL_LINUX_DMA_BUF_EXT
 #define EGL_LINUX_DMA_BUF_EXT 0x3270
 #endif
@@ -189,10 +201,6 @@
 
 #ifndef EGL_YUV_NARROW_RANGE_EXT
 #define EGL_YUV_NARROW_RANGE_EXT 0x3283
-#endif
-
-#if !GST_GL_HAVE_EGLUINT64KHR
-typedef khronos_uint64_t EGLuint64KHR;
 #endif
 
 GST_DEFINE_MINI_OBJECT_TYPE (GstEGLImage, gst_egl_image);
@@ -303,10 +311,8 @@ _gst_egl_image_create (GstGLContext * context, guint target,
   EGLContext egl_context = EGL_NO_CONTEXT;
   EGLImageKHR img = EGL_NO_IMAGE_KHR;
   GstGLDisplayEGL *display_egl;
-  gint plat_major, plat_minor;
   guint attrib_len = 0;
 
-  gst_gl_context_get_gl_platform_version (context, &plat_major, &plat_minor);
 
   display_egl = gst_gl_display_egl_from_gl_display (context->display);
   if (!display_egl) {
@@ -325,6 +331,9 @@ _gst_egl_image_create (GstGLContext * context, guint target,
     while (attribs[attrib_len++] != EGL_NONE) {
     }
 #ifdef EGL_VERSION_1_5
+  gint plat_major, plat_minor;
+  gst_gl_context_get_gl_platform_version (context, &plat_major, &plat_minor);
+
   if (GST_GL_CHECK_GL_VERSION (plat_major, plat_minor, 1, 5)) {
     EGLImageKHR (*gst_eglCreateImage) (EGLDisplay dpy, EGLContext ctx,
         EGLenum target, EGLClientBuffer buffer, const EGLAttrib * attrib_list);
@@ -351,7 +360,7 @@ _gst_egl_image_create (GstGLContext * context, guint target,
     g_free (egl_attribs);
   } else
 #endif
-  {
+  if (gst_gl_context_check_feature (context, "EGL_KHR_image_base")) {
     EGLImageKHR (*gst_eglCreateImageKHR) (EGLDisplay dpy, EGLContext ctx,
         EGLenum target, EGLClientBuffer buffer, const EGLint * attrib_list);
     EGLint *egl_attribs = NULL;
@@ -360,8 +369,8 @@ _gst_egl_image_create (GstGLContext * context, guint target,
     gst_eglCreateImageKHR = gst_gl_context_get_proc_address (context,
         "eglCreateImageKHR");
     if (!gst_eglCreateImageKHR) {
-      GST_WARNING_OBJECT (context, "\"eglCreateImageKHR\" not exposed by the "
-          "implementation");
+      GST_ERROR_OBJECT (context, "\"eglCreateImageKHR\" not exposed by the "
+          "implementation as required by EGL_KHR_image_base");
       return EGL_NO_IMAGE_KHR;
     }
 
@@ -375,6 +384,9 @@ _gst_egl_image_create (GstGLContext * context, guint target,
         egl_attribs);
 
     g_free (egl_attribs);
+  } else {
+    GST_INFO_OBJECT (context, "EGLImage creation not supported");
+    return EGL_NO_IMAGE_KHR;
   }
 
   return img;
@@ -387,16 +399,31 @@ _gst_egl_image_destroy (GstGLContext * context, EGLImageKHR image)
   EGLDisplay egl_display = EGL_DEFAULT_DISPLAY;
   GstGLDisplayEGL *display_egl;
 
-  gst_eglDestroyImage = gst_gl_context_get_proc_address (context,
-      "eglDestroyImage");
-  if (!gst_eglDestroyImage) {
+#ifdef EGL_VERSION_1_5
+  gint plat_major, plat_minor;
+  gst_gl_context_get_gl_platform_version (context, &plat_major, &plat_minor);
+
+  if (GST_GL_CHECK_GL_VERSION (plat_major, plat_minor, 1, 5)) {
+    gst_eglDestroyImage = gst_gl_context_get_proc_address (context,
+        "eglDestroyImage");
+    if (!gst_eglDestroyImage) {
+      GST_ERROR_OBJECT (context, "\"eglDestroyImage\" not exposed by the "
+          "implementation as required by EGL >= 1.5");
+      return;
+    }
+  } else
+#endif
+  if (gst_gl_context_check_feature (context, "EGL_KHR_image_base")) {
     gst_eglDestroyImage = gst_gl_context_get_proc_address (context,
         "eglDestroyImageKHR");
     if (!gst_eglDestroyImage) {
       GST_ERROR_OBJECT (context, "\"eglDestroyImage\" not exposed by the "
-          "implementation");
+          "implementation as required by EGL_KHR_image_base");
       return;
     }
+  } else {
+    GST_ERROR_OBJECT (context, "Destruction of EGLImage not supported.");
+    return;
   }
 
   display_egl = gst_gl_display_egl_from_gl_display (context->display);
@@ -425,7 +452,7 @@ _destroy_egl_image (GstEGLImage * image, gpointer user_data)
  * @gl_mem: a #GstGLMemory
  * @attribs: additional attributes to add to the `eglCreateImage`() call.
  *
- * Returns: (transfer full): a #GstEGLImage wrapping @gl_mem or %NULL on failure
+ * Returns: (transfer full) (nullable): a #GstEGLImage wrapping @gl_mem or %NULL on failure
  */
 GstEGLImage *
 gst_egl_image_from_texture (GstGLContext * context, GstGLMemory * gl_mem,
@@ -460,7 +487,7 @@ gst_egl_image_from_texture (GstGLContext * context, GstGLMemory * gl_mem,
  * target.
  */
 static int
-_drm_rgba_fourcc_from_info (GstVideoInfo * info, int plane,
+_drm_rgba_fourcc_from_info (const GstVideoInfo * info, int plane,
     GstGLFormat * out_format)
 {
   GstVideoFormat format = GST_VIDEO_INFO_FORMAT (info);
@@ -468,10 +495,14 @@ _drm_rgba_fourcc_from_info (GstVideoInfo * info, int plane,
   const gint rgba_fourcc = DRM_FORMAT_ABGR8888;
   const gint rgb_fourcc = DRM_FORMAT_BGR888;
   const gint rg_fourcc = DRM_FORMAT_GR88;
+  const gint rg16_fourcc = DRM_FORMAT_GR1616;
+  const gint rgb10a2_fourcc = DRM_FORMAT_ABGR2101010;
 #else
   const gint rgba_fourcc = DRM_FORMAT_RGBA8888;
   const gint rgb_fourcc = DRM_FORMAT_RGB888;
   const gint rg_fourcc = DRM_FORMAT_RG88;
+  const gint rg16_fourcc = DRM_FORMAT_RG1616;
+  const gint rgb10a2_fourcc = DRM_FORMAT_RGBA1010102;
 #endif
 
   GST_DEBUG ("Getting DRM fourcc for %s plane %i",
@@ -514,6 +545,10 @@ _drm_rgba_fourcc_from_info (GstVideoInfo * info, int plane,
 
     case GST_VIDEO_FORMAT_NV12:
     case GST_VIDEO_FORMAT_NV21:
+    case GST_VIDEO_FORMAT_NV16:
+    case GST_VIDEO_FORMAT_NV61:
+    case GST_VIDEO_FORMAT_NV12_16L32S:
+    case GST_VIDEO_FORMAT_NV12_4L4:
       *out_format = plane == 0 ? GST_GL_RED : GST_GL_RG;
       return plane == 0 ? DRM_FORMAT_R8 : rg_fourcc;
 
@@ -545,10 +580,47 @@ _drm_rgba_fourcc_from_info (GstVideoInfo * info, int plane,
       *out_format = plane == 0 ? GST_GL_R16 : GST_GL_RG16;
       return plane == 0 ? DRM_FORMAT_R16 : DRM_FORMAT_RG1616;
 
+    case GST_VIDEO_FORMAT_AV12:
+      *out_format = plane == 1 ? GST_GL_RED : GST_GL_RG;
+      return plane == 1 ? rg_fourcc : DRM_FORMAT_R8;
+
+    case GST_VIDEO_FORMAT_Y210:
+      *out_format = GST_GL_RG16;
+      return rg16_fourcc;
+
+    case GST_VIDEO_FORMAT_Y212_LE:
+      *out_format = GST_GL_RG16;
+      return DRM_FORMAT_GR1616;
+
+    case GST_VIDEO_FORMAT_Y212_BE:
+      *out_format = GST_GL_RG16;
+      return DRM_FORMAT_RG1616;
+
+    case GST_VIDEO_FORMAT_Y410:
+      *out_format = GST_GL_RGB10_A2;
+      return rgb10a2_fourcc;
+
+    case GST_VIDEO_FORMAT_Y412_LE:
+      *out_format = GST_GL_RGBA16;
+      return DRM_FORMAT_ABGR16161616;
+
     default:
       GST_ERROR ("Unsupported format for DMABuf.");
       return -1;
   }
+}
+
+static gint
+get_egl_stride (const GstVideoInfo * info, gint plane)
+{
+  const GstVideoFormatInfo *finfo = info->finfo;
+  gint stride = info->stride[plane];
+
+  if (!GST_VIDEO_FORMAT_INFO_IS_TILED (finfo))
+    return stride;
+
+  return GST_VIDEO_TILE_X_TILES (stride) *
+      GST_VIDEO_FORMAT_INFO_TILE_STRIDE (finfo, plane);
 }
 
 /**
@@ -567,12 +639,13 @@ _drm_rgba_fourcc_from_info (GstVideoInfo * info, int plane,
  * With NV12, two EGL images are created, one with R format, one
  * with RG format etc.
  *
- * Returns: a #GstEGLImage wrapping @dmabuf or %NULL on failure
+ * Returns: (nullable): a #GstEGLImage wrapping @dmabuf or %NULL on failure
  */
 GstEGLImage *
 gst_egl_image_from_dmabuf (GstGLContext * context,
-    gint dmabuf, GstVideoInfo * in_info, gint plane, gsize offset)
+    gint dmabuf, const GstVideoInfo * in_info, gint plane, gsize offset)
 {
+  gint comp[GST_VIDEO_MAX_COMPONENTS];
   GstGLFormat format = 0;
   guintptr attribs[13];
   EGLImageKHR img;
@@ -580,16 +653,17 @@ gst_egl_image_from_dmabuf (GstGLContext * context,
   gint fourcc;
   gint i;
 
+  gst_video_format_info_component (in_info->finfo, plane, comp);
   fourcc = _drm_rgba_fourcc_from_info (in_info, plane, &format);
   GST_DEBUG ("fourcc %.4s (%d) plane %d (%dx%d)",
       (char *) &fourcc, fourcc, plane,
-      GST_VIDEO_INFO_COMP_WIDTH (in_info, plane),
-      GST_VIDEO_INFO_COMP_HEIGHT (in_info, plane));
+      GST_VIDEO_INFO_COMP_WIDTH (in_info, comp[0]),
+      GST_VIDEO_INFO_COMP_HEIGHT (in_info, comp[0]));
 
   attribs[atti++] = EGL_WIDTH;
-  attribs[atti++] = GST_VIDEO_INFO_COMP_WIDTH (in_info, plane);
+  attribs[atti++] = GST_VIDEO_INFO_COMP_WIDTH (in_info, comp[0]);
   attribs[atti++] = EGL_HEIGHT;
-  attribs[atti++] = GST_VIDEO_INFO_COMP_HEIGHT (in_info, plane);
+  attribs[atti++] = GST_VIDEO_INFO_COMP_HEIGHT (in_info, comp[0]);
   attribs[atti++] = EGL_LINUX_DRM_FOURCC_EXT;
   attribs[atti++] = fourcc;
   attribs[atti++] = EGL_DMA_BUF_PLANE0_FD_EXT;
@@ -597,7 +671,7 @@ gst_egl_image_from_dmabuf (GstGLContext * context,
   attribs[atti++] = EGL_DMA_BUF_PLANE0_OFFSET_EXT;
   attribs[atti++] = offset;
   attribs[atti++] = EGL_DMA_BUF_PLANE0_PITCH_EXT;
-  attribs[atti++] = GST_VIDEO_INFO_PLANE_STRIDE (in_info, plane);
+  attribs[atti++] = get_egl_stride (in_info, plane);
   attribs[atti] = EGL_NONE;
   g_assert (atti == G_N_ELEMENTS (attribs) - 1);
 
@@ -621,7 +695,7 @@ gst_egl_image_from_dmabuf (GstGLContext * context,
  * YUV->RGB conversion matrices etc.)
  */
 static int
-_drm_direct_fourcc_from_info (GstVideoInfo * info)
+_drm_direct_fourcc_from_info (const GstVideoInfo * info)
 {
   GstVideoFormat format = GST_VIDEO_INFO_FORMAT (info);
 
@@ -729,7 +803,7 @@ _drm_direct_fourcc_from_info (GstVideoInfo * info)
  */
 gboolean
 gst_egl_image_check_dmabuf_direct (GstGLContext * context,
-    GstVideoInfo * in_info, GstGLTextureTarget target)
+    const GstVideoInfo * in_info, GstGLTextureTarget target)
 {
   EGLDisplay egl_display = EGL_DEFAULT_DISPLAY;
   GstGLDisplayEGL *display_egl;
@@ -851,13 +925,13 @@ gst_egl_image_check_dmabuf_direct (GstGLContext * context,
  * is that this function creates one EGL image for all planes, not one for
  * a single plane.
  *
- * Returns: a #GstEGLImage wrapping @dmabuf or %NULL on failure
+ * Returns: (nullable): a #GstEGLImage wrapping @dmabuf or %NULL on failure
  *
  * Since: 1.18
  */
 GstEGLImage *
 gst_egl_image_from_dmabuf_direct_target (GstGLContext * context,
-    gint * fd, gsize * offset, GstVideoInfo * in_info,
+    gint * fd, const gsize * offset, const GstVideoInfo * in_info,
     GstGLTextureTarget target)
 {
 
@@ -901,7 +975,7 @@ gst_egl_image_from_dmabuf_direct_target (GstGLContext * context,
     attribs[atti++] = EGL_DMA_BUF_PLANE0_OFFSET_EXT;
     attribs[atti++] = offset[0];
     attribs[atti++] = EGL_DMA_BUF_PLANE0_PITCH_EXT;
-    attribs[atti++] = in_info->stride[0];
+    attribs[atti++] = get_egl_stride (in_info, 0);
     if (with_modifiers) {
       attribs[atti++] = EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
       attribs[atti++] = DRM_FORMAT_MOD_LINEAR & 0xffffffff;
@@ -917,7 +991,7 @@ gst_egl_image_from_dmabuf_direct_target (GstGLContext * context,
     attribs[atti++] = EGL_DMA_BUF_PLANE1_OFFSET_EXT;
     attribs[atti++] = offset[1];
     attribs[atti++] = EGL_DMA_BUF_PLANE1_PITCH_EXT;
-    attribs[atti++] = in_info->stride[1];
+    attribs[atti++] = get_egl_stride (in_info, 1);
     if (with_modifiers) {
       attribs[atti++] = EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT;
       attribs[atti++] = DRM_FORMAT_MOD_LINEAR & 0xffffffff;
@@ -933,7 +1007,7 @@ gst_egl_image_from_dmabuf_direct_target (GstGLContext * context,
     attribs[atti++] = EGL_DMA_BUF_PLANE2_OFFSET_EXT;
     attribs[atti++] = offset[2];
     attribs[atti++] = EGL_DMA_BUF_PLANE2_PITCH_EXT;
-    attribs[atti++] = in_info->stride[2];
+    attribs[atti++] = get_egl_stride (in_info, 2);
     if (with_modifiers) {
       attribs[atti++] = EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT;
       attribs[atti++] = DRM_FORMAT_MOD_LINEAR & 0xffffffff;
@@ -1018,11 +1092,11 @@ gst_egl_image_from_dmabuf_direct_target (GstGLContext * context,
  * is that this function creates one EGL image for all planes, not one for
  * a single plane.
  *
- * Returns: a #GstEGLImage wrapping @dmabuf or %NULL on failure
+ * Returns: (nullable): a #GstEGLImage wrapping @dmabuf or %NULL on failure
  */
 GstEGLImage *
 gst_egl_image_from_dmabuf_direct (GstGLContext * context,
-    gint * fd, gsize * offset, GstVideoInfo * in_info)
+    gint * fd, const gsize * offset, const GstVideoInfo * in_info)
 {
   return gst_egl_image_from_dmabuf_direct_target (context, fd, offset, in_info,
       GST_GL_TEXTURE_TARGET_2D);

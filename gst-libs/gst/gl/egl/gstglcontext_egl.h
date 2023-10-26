@@ -18,8 +18,8 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef __GST_GL_EGL_H__
-#define __GST_GL_EGL_H__
+#ifndef __GST_GL_CONTEXT_EGL_H__
+#define __GST_GL_CONTEXT_EGL_H__
 
 #include <gst/gl/gstglcontext.h>
 #include <gst/gl/egl/gstgldisplay_egl.h>
@@ -67,6 +67,9 @@ struct _GstGLContextEGL
 
   /* Cached handle */
   guintptr window_handle;
+  gulong window_handle_signal;
+
+  GstStructure *requested_config;
 };
 
 /**
@@ -89,6 +92,9 @@ guintptr            gst_gl_context_egl_get_current_context  (void);
 G_GNUC_INTERNAL
 gpointer            gst_gl_context_egl_get_proc_address     (GstGLAPI gl_api, const gchar * name);
 
+G_GNUC_INTERNAL
+gboolean            gst_gl_context_egl_fill_info            (GstGLContext * context, GError ** error);
+
 G_END_DECLS
 
-#endif /* __GST_GL_EGL_H__ */
+#endif /* __GST_GL_CONTEXT_EGL_H__ */

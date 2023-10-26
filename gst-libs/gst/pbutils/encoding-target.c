@@ -88,6 +88,27 @@
 
 /* Documented in encoding-profile.c */
 
+#ifndef GST_DISABLE_GST_DEBUG
+#define GST_CAT_DEFAULT gst_pb_utils_encoding_target_ensure_debug_category()
+
+static GstDebugCategory *
+gst_pb_utils_encoding_target_ensure_debug_category (void)
+{
+  static gsize cat_gonce = 0;
+
+  if (g_once_init_enter (&cat_gonce)) {
+    GstDebugCategory *cat = NULL;
+
+    GST_DEBUG_CATEGORY_INIT (cat, "encoding-target", 0,
+        "GstPbUtils encoding target");
+
+    g_once_init_leave (&cat_gonce, (gsize) cat);
+  }
+
+  return (GstDebugCategory *) cat_gonce;
+}
+#endif /* GST_DISABLE_GST_DEBUG */
+
 #define GST_ENCODING_TARGET_HEADER "GStreamer Encoding Target"
 #define GST_ENCODING_TARGET_DIRECTORY "encoding-profiles"
 #define GST_ENCODING_TARGET_SUFFIX ".gep"
@@ -177,7 +198,7 @@ gst_encoding_target_get_description (GstEncodingTarget * target)
  * gst_encoding_target_get_path:
  * @target: a #GstEncodingTarget
  *
- * Returns: (transfer none): The path to the @target file.
+ * Returns: (transfer none) (nullable) (type filename): The path to the @target file.
  *
  * Since: 1.18
  */
@@ -206,7 +227,7 @@ gst_encoding_target_get_profiles (GstEncodingTarget * target)
  * @target: a #GstEncodingTarget
  * @name: the name of the profile to retrieve
  *
- * Returns: (transfer full): The matching #GstEncodingProfile, or %NULL.
+ * Returns: (nullable) (transfer full): The matching #GstEncodingProfile, or %NULL.
  */
 GstEncodingProfile *
 gst_encoding_target_get_profile (GstEncodingTarget * target, const gchar * name)
@@ -288,7 +309,7 @@ validate_name (const gchar * name)
  * *can* be a application or user specific category if
  * needed.
  *
- * Returns: (transfer full): The newly created #GstEncodingTarget or %NULL if
+ * Returns: (transfer full) (nullable): The newly created #GstEncodingTarget or %NULL if
  * there was an error.
  */
 
@@ -877,7 +898,7 @@ gst_encoding_target_subload (gchar * path, const gchar * category,
  * @name: the name of the #GstEncodingTarget to load (automatically
  * converted to lower case internally as capital letters are not
  * valid for target names).
- * @category: (allow-none): the name of the target category, like
+ * @category: (nullable): the name of the target category, like
  * #GST_ENCODING_CATEGORY_DEVICE. Can be %NULL
  * @error: If an error occurred, this field will be filled in.
  *
@@ -1259,7 +1280,7 @@ merge_targets (GList * res, GList * extra)
 
 /**
  * gst_encoding_list_all_targets:
- * @categoryname: (allow-none): The category, for ex: #GST_ENCODING_CATEGORY_DEVICE.
+ * @categoryname: (nullable): The category, for ex: #GST_ENCODING_CATEGORY_DEVICE.
  * Can be %NULL.
  *
  * List all available #GstEncodingTarget for the specified category, or all categories

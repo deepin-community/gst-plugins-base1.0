@@ -87,7 +87,7 @@ struct _GstGLBufferAllocationParams
 GST_GL_API
 GstGLBufferAllocationParams *   gst_gl_buffer_allocation_params_new     (GstGLContext * context,
                                                                          gsize alloc_size,
-                                                                         GstAllocationParams * alloc_params,
+                                                                         const GstAllocationParams * alloc_params,
                                                                          guint gl_target,
                                                                          guint gl_usage);
 
@@ -130,6 +130,16 @@ struct _GstGLBufferAllocatorClass
  * The name of the GL buffer allocator
  */
 #define GST_GL_BUFFER_ALLOCATOR_NAME   "GLBuffer"
+
+/**
+ * GST_TYPE_GL_BUFFER:
+ *
+ * Since: 1.20
+ * Deprecated: 1.22: This type has no use.
+ */
+#define GST_TYPE_GL_BUFFER (gst_gl_buffer_get_type())
+GST_GL_DEPRECATED
+GType gst_gl_buffer_get_type(void);
 
 GST_GL_API
 void          gst_gl_buffer_init_once (void);

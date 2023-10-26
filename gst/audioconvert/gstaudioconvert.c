@@ -157,6 +157,7 @@ enum
   PROP_DITHERING,
   PROP_NOISE_SHAPING,
   PROP_MIX_MATRIX,
+  PROP_DITHERING_THRESHOLD
 };
 
 #define DEBUG_INIT \
@@ -165,7 +166,8 @@ enum
 #define gst_audio_convert_parent_class parent_class
 G_DEFINE_TYPE_WITH_CODE (GstAudioConvert, gst_audio_convert,
     GST_TYPE_BASE_TRANSFORM, DEBUG_INIT);
-
+GST_ELEMENT_REGISTER_DEFINE (audioconvert, "audioconvert",
+    GST_RANK_PRIMARY, GST_TYPE_AUDIO_CONVERT);
 /*** GSTREAMER PROTOTYPES *****************************************************/
 
 #define STATIC_CAPS \
@@ -223,6 +225,18 @@ gst_audio_convert_class_init (GstAudioConvertClass * klass)
               G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS),
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
+  /**
+   * GstAudioConvert:dithering-threshold:
+   *
+   * Threshold for the output bit depth at/below which to apply dithering.
+   *
+   * Since: 1.22
+   */
+  g_object_class_install_property (gobject_class, PROP_DITHERING_THRESHOLD,
+      g_param_spec_uint ("dithering-threshold", "Dithering Threshold",
+          "Threshold for the output bit depth at/below which to apply dithering.",
+          0, 32, 20, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
   gst_element_class_add_static_pad_template (element_class,
       &gst_audio_convert_src_template);
   gst_element_class_add_static_pad_template (element_class,
@@ -259,6 +273,7 @@ static void
 gst_audio_convert_init (GstAudioConvert * this)
 {
   this->dither = GST_AUDIO_DITHER_TPDF;
+  this->dither_threshold = 20;
   this->ns = GST_AUDIO_NOISE_SHAPING_NONE;
   g_value_init (&this->mix_matrix, GST_TYPE_ARRAY);
 
@@ -682,6 +697,8 @@ gst_audio_convert_fixate_channels (GstBaseTransform * base, GstStructure * ins,
   } else if (out_chans > 1) {
     GST_ERROR_OBJECT (base, "Have no default layout for %d channels",
         out_chans);
+    gst_structure_set (outs, "channel-mask", GST_TYPE_BITMASK,
+        G_GUINT64_CONSTANT (0), NULL);
   }
 }
 
@@ -764,6 +781,8 @@ gst_audio_convert_set_caps (GstBaseTransform * base, GstCaps * incaps,
   config = gst_structure_new ("GstAudioConverterConfig",
       GST_AUDIO_CONVERTER_OPT_DITHER_METHOD, GST_TYPE_AUDIO_DITHER_METHOD,
       this->dither,
+      GST_AUDIO_CONVERTER_OPT_DITHER_THRESHOLD, G_TYPE_UINT,
+      this->dither_threshold,
       GST_AUDIO_CONVERTER_OPT_NOISE_SHAPING_METHOD,
       GST_TYPE_AUDIO_NOISE_SHAPING_METHOD, this->ns, NULL);
 
@@ -849,8 +868,8 @@ gst_audio_convert_transform (GstBaseTransform * base, GstBuffer * inbuf,
     /* Create silence buffer */
     gint i;
     for (i = 0; i < dstabuf.n_planes; i++) {
-      gst_audio_format_fill_silence (this->out_info.finfo, dstabuf.planes[i],
-          GST_AUDIO_BUFFER_PLANE_SIZE (&dstabuf));
+      gst_audio_format_info_fill_silence (this->out_info.finfo,
+          dstabuf.planes[i], GST_AUDIO_BUFFER_PLANE_SIZE (&dstabuf));
     }
   }
   ret = GST_FLOW_OK;
@@ -915,6 +934,11 @@ gst_audio_convert_submit_input_buffer (GstBaseTransform * base,
   GstAudioConvert *this = GST_AUDIO_CONVERT (base);
 
   if (base->segment.format == GST_FORMAT_TIME) {
+    if (!GST_AUDIO_INFO_IS_VALID (&this->in_info)) {
+      GST_WARNING_OBJECT (this, "Got buffer, but not negotiated yet!");
+      return GST_FLOW_NOT_NEGOTIATED;
+    }
+
     input =
         gst_audio_buffer_clip (input, &base->segment, this->in_info.rate,
         this->in_info.bpf);
@@ -977,6 +1001,9 @@ gst_audio_convert_set_property (GObject * object, guint prop_id,
     case PROP_NOISE_SHAPING:
       this->ns = g_value_get_enum (value);
       break;
+    case PROP_DITHERING_THRESHOLD:
+      this->dither_threshold = g_value_get_uint (value);
+      break;
     case PROP_MIX_MATRIX:
       if (!gst_value_array_get_size (value)) {
         this->mix_matrix_is_set = FALSE;
@@ -1012,6 +1039,9 @@ gst_audio_convert_get_property (GObject * object, guint prop_id,
       break;
     case PROP_NOISE_SHAPING:
       g_value_set_enum (value, this->ns);
+      break;
+    case PROP_DITHERING_THRESHOLD:
+      g_value_set_uint (value, this->dither_threshold);
       break;
     case PROP_MIX_MATRIX:
       if (this->mix_matrix_is_set)

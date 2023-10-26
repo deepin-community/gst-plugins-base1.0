@@ -103,12 +103,13 @@
 #include "config.h"
 #endif
 
-#include <gst/gst-i18n-plugin.h>
+#include <glib/gi18n-lib.h>
 #include <gst/net/gstnetcontrolmessagemeta.h>
 
 #include <string.h>
 
 #include "gstmultisocketsink.h"
+#include "gsttcpelements.h"
 
 #ifndef G_OS_WIN32
 #include <netinet/in.h>
@@ -206,6 +207,8 @@ static void gst_multi_socket_sink_get_property (GObject * object, guint prop_id,
 #define gst_multi_socket_sink_parent_class parent_class
 G_DEFINE_TYPE (GstMultiSocketSink, gst_multi_socket_sink,
     GST_TYPE_MULTI_HANDLE_SINK);
+GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (multisocketsink, "multisocketsink",
+    GST_RANK_NONE, GST_TYPE_MULTI_SOCKET_SINK, tcp_element_init (plugin));
 
 static guint gst_multi_socket_sink_signals[LAST_SIGNAL] = { 0 };
 
@@ -822,7 +825,7 @@ gst_multi_socket_sink_handle_client_write (GstMultiSocketSink * sink,
 {
   gboolean more;
   gboolean flushing;
-  GstClockTime now;
+  GstClockTime now, now_monotonic;
   GError *err = NULL;
   GstMultiHandleSink *mhsink = GST_MULTI_HANDLE_SINK (sink);
   GstMultiHandleClient *mhclient = (GstMultiHandleClient *) client;
@@ -831,6 +834,7 @@ gst_multi_socket_sink_handle_client_write (GstMultiSocketSink * sink,
 
 
   now = g_get_real_time () * GST_USECOND;
+  now_monotonic = g_get_monotonic_time () * GST_USECOND;
 
   flushing = mhclient->status == GST_CLIENT_STATUS_FLUSHING;
 
@@ -948,6 +952,7 @@ gst_multi_socket_sink_handle_client_write (GstMultiSocketSink * sink,
         /* update stats */
         mhclient->bytes_sent += wrote;
         mhclient->last_activity_time = now;
+        mhclient->last_activity_time_monotonic = now_monotonic;
         mhsink->bytes_served += wrote;
       }
     }
@@ -1112,7 +1117,7 @@ gst_multi_socket_sink_timeout (GstMultiSocketSink * sink)
   GList *clients;
   GstMultiHandleSink *mhsink = GST_MULTI_HANDLE_SINK (sink);
 
-  now = g_get_real_time () * GST_USECOND;
+  now = g_get_monotonic_time () * GST_USECOND;
 
   CLIENTS_LOCK (mhsink);
   for (clients = mhsink->clients; clients; clients = clients->next) {
@@ -1122,7 +1127,7 @@ gst_multi_socket_sink_timeout (GstMultiSocketSink * sink)
     client = clients->data;
     mhclient = (GstMultiHandleClient *) client;
     if (mhsink->timeout > 0
-        && now - mhclient->last_activity_time > mhsink->timeout) {
+        && now - mhclient->last_activity_time_monotonic > mhsink->timeout) {
       mhclient->status = GST_CLIENT_STATUS_SLOW;
       gst_multi_handle_sink_remove_client_link (mhsink, clients);
     }

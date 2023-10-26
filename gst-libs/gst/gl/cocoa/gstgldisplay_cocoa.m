@@ -22,6 +22,10 @@
 #include "config.h"
 #endif
 
+#if !defined(MAC_OS_X_VERSION_MAX_ALLOWED) || MAC_OS_X_VERSION_MAX_ALLOWED >= 1014
+# define GL_SILENCE_DEPRECATION
+#endif
+
 #include <Cocoa/Cocoa.h>
 
 #include <gst/gl/cocoa/gstgldisplay_cocoa.h>
@@ -224,7 +228,7 @@ gst_gl_display_cocoa_finalize (GObject * object)
  *
  * Create a new #GstGLDisplayCocoa.
  *
- * Returns: (transfer full): a new #GstGLDisplayCocoa or %NULL
+ * Returns: (transfer full): a new #GstGLDisplayCocoa
  */
 GstGLDisplayCocoa *
 gst_gl_display_cocoa_new (void)

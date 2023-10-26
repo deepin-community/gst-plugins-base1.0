@@ -41,24 +41,6 @@
   (m)->max_display_mastering_luminance, \
   (m)->min_display_mastering_luminance
 
-/* g_ascii_string_to_unsigned is available since 2.54. Get rid of this wrapper
- * when we bump the version in 1.18 */
-#if !GLIB_CHECK_VERSION(2,54,0)
-#define g_ascii_string_to_unsigned video_hdr_ascii_string_to_unsigned
-static gboolean
-video_hdr_ascii_string_to_unsigned (const gchar * str, guint base, guint64 min,
-    guint64 max, guint64 * out_num, GError ** error)
-{
-  gchar *endptr = NULL;
-  *out_num = g_ascii_strtoull (str, &endptr, base);
-  if (errno)
-    return FALSE;
-  if (endptr == str)
-    return FALSE;
-  return TRUE;
-}
-#endif
-
 /**
  * gst_video_mastering_display_info_init:
  * @minfo: a #GstVideoMasteringDisplayInfo
@@ -350,6 +332,29 @@ gst_video_content_light_level_to_string (const GstVideoContentLightLevel *
 
   return g_strdup_printf ("%d:%d",
       linfo->max_content_light_level, linfo->max_frame_average_light_level);
+}
+
+/**
+ * gst_video_content_light_level_is_equal:
+ * @linfo: a #GstVideoContentLightLevel
+ * @other: a #GstVideoContentLightLevel
+ *
+ * Checks equality between @linfo and @other.
+ *
+ * Returns: %TRUE if @linfo and @other are equal.
+ *
+ * Since: 1.20
+ */
+gboolean
+gst_video_content_light_level_is_equal (const GstVideoContentLightLevel * linfo,
+    const GstVideoContentLightLevel * other)
+{
+  g_return_val_if_fail (linfo != NULL, FALSE);
+  g_return_val_if_fail (other != NULL, FALSE);
+
+  return (linfo->max_content_light_level == other->max_content_light_level &&
+      linfo->max_frame_average_light_level ==
+      other->max_frame_average_light_level);
 }
 
 /**

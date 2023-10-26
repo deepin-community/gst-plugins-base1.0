@@ -128,20 +128,30 @@ struct _GstGLRenderbufferAllocationParams
 
 GST_GL_API
 GstGLRenderbufferAllocationParams *     gst_gl_renderbuffer_allocation_params_new           (GstGLContext * context,
-                                                                                             GstAllocationParams * alloc_params,
+                                                                                             const GstAllocationParams * alloc_params,
                                                                                              GstGLFormat renderbuffer_format,
                                                                                              guint width,
                                                                                              guint height);
 
 GST_GL_API
 GstGLRenderbufferAllocationParams *     gst_gl_renderbuffer_allocation_params_new_wrapped   (GstGLContext * context,
-                                                                                             GstAllocationParams * alloc_params,
+                                                                                             const GstAllocationParams * alloc_params,
                                                                                              GstGLFormat renderbuffer_format,
                                                                                              guint width,
                                                                                              guint height,
                                                                                              gpointer gl_handle,
                                                                                              gpointer user_data,
                                                                                              GDestroyNotify notify);
+
+/**
+ * GST_TYPE_GL_RENDERBUFFER:
+ *
+ * Since: 1.20
+ * Deprecated: 1.22: This type has no use.
+ */
+#define GST_TYPE_GL_RENDERBUFFER (gst_gl_renderbuffer_get_type())
+GST_GL_DEPRECATED
+GType gst_gl_renderbuffer_get_type(void);
 
 GST_GL_API
 void            gst_gl_renderbuffer_init_once   (void);

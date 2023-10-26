@@ -253,7 +253,7 @@ audio_chain_get_samples (AudioChain * chain, gsize * avail)
 {
   gpointer *res;
 
-  while (!chain->samples)
+  if (!chain->samples)
     chain->make_func (chain, chain->make_func_data);
 
   res = chain->samples;
@@ -263,7 +263,6 @@ audio_chain_get_samples (AudioChain * chain, gsize * avail)
   return res;
 }
 
-/*
 static guint
 get_opt_uint (GstAudioConverter * convert, const gchar * opt, guint def)
 {
@@ -272,7 +271,6 @@ get_opt_uint (GstAudioConverter * convert, const gchar * opt, guint def)
     res = def;
   return res;
 }
-*/
 
 static gint
 get_opt_enum (GstAudioConverter * convert, const gchar * opt, GType type,
@@ -292,6 +290,7 @@ get_opt_value (GstAudioConverter * convert, const gchar * opt)
 
 #define DEFAULT_OPT_RESAMPLER_METHOD GST_AUDIO_RESAMPLER_METHOD_BLACKMAN_NUTTALL
 #define DEFAULT_OPT_DITHER_METHOD GST_AUDIO_DITHER_NONE
+#define DEFAULT_OPT_DITHER_THRESHOLD 20
 #define DEFAULT_OPT_NOISE_SHAPING_METHOD GST_AUDIO_NOISE_SHAPING_NONE
 #define DEFAULT_OPT_QUANTIZATION 1
 
@@ -301,6 +300,8 @@ get_opt_value (GstAudioConverter * convert, const gchar * opt)
 #define GET_OPT_DITHER_METHOD(c) get_opt_enum(c, \
     GST_AUDIO_CONVERTER_OPT_DITHER_METHOD, GST_TYPE_AUDIO_DITHER_METHOD, \
     DEFAULT_OPT_DITHER_METHOD)
+#define GET_OPT_DITHER_THRESHOLD(c) get_opt_uint(c, \
+    GST_AUDIO_CONVERTER_OPT_DITHER_THRESHOLD, DEFAULT_OPT_DITHER_THRESHOLD)
 #define GET_OPT_NOISE_SHAPING_METHOD(c) get_opt_enum(c, \
     GST_AUDIO_CONVERTER_OPT_NOISE_SHAPING_METHOD, GST_TYPE_AUDIO_NOISE_SHAPING_METHOD, \
     DEFAULT_OPT_NOISE_SHAPING_METHOD)
@@ -478,7 +479,7 @@ do_unpack (AudioChain * chain, gpointer user_data)
       }
     } else {
       for (i = 0; i < chain->blocks; i++) {
-        gst_audio_format_fill_silence (chain->finfo, tmp[i],
+        gst_audio_format_info_fill_silence (chain->finfo, tmp[i],
             num_samples * chain->inc);
       }
     }
@@ -582,7 +583,8 @@ do_quantize (AudioChain * chain, gpointer user_data)
   out = (chain->allow_ip ? in : audio_chain_alloc_samples (chain, num_samples));
   GST_LOG ("quantize %p, %p %" G_GSIZE_FORMAT, in, out, num_samples);
 
-  gst_audio_quantize_samples (convert->quant, in, out, num_samples);
+  if (in && out)
+    gst_audio_quantize_samples (convert->quant, in, out, num_samples);
 
   audio_chain_set_samples (chain, out, num_samples);
 
@@ -950,9 +952,11 @@ chain_quantize (GstAudioConverter * convert, AudioChain * prev)
   gint in_depth, out_depth;
   gboolean in_int, out_int;
   GstAudioDitherMethod dither;
+  guint dither_threshold;
   GstAudioNoiseShapingMethod ns;
 
   dither = GET_OPT_DITHER_METHOD (convert);
+  dither_threshold = GET_OPT_DITHER_THRESHOLD (convert);
   ns = GET_OPT_NOISE_SHAPING_METHOD (convert);
 
   cur_finfo = gst_audio_format_get_info (convert->current_format);
@@ -968,7 +972,7 @@ chain_quantize (GstAudioConverter * convert, AudioChain * prev)
    * as DA converters only can do a SNR up to 20 bits in reality.
    * Also don't dither or apply noise shaping if target depth is larger than
    * source depth. */
-  if (out_depth > 20 || (in_int && out_depth >= in_depth)) {
+  if (out_depth > dither_threshold || (in_int && out_depth >= in_depth)) {
     dither = GST_AUDIO_DITHER_NONE;
     ns = GST_AUDIO_NOISE_SHAPING_NONE;
     GST_INFO ("using no dither and noise shaping");
@@ -1102,7 +1106,7 @@ converter_passthrough (GstAudioConverter * convert,
     }
   } else {
     for (i = 0; i < chain->blocks; i++)
-      gst_audio_format_fill_silence (convert->in.finfo, out[i], samples);
+      gst_audio_format_info_fill_silence (convert->in.finfo, out[i], samples);
   }
   return TRUE;
 }
@@ -1248,7 +1252,7 @@ converter_endian (GstAudioConverter * convert,
       convert->swap_endian (out[i], in[i], samples);
   } else {
     for (i = 0; i < chain->blocks; i++)
-      gst_audio_format_fill_silence (convert->in.finfo, out[i], samples);
+      gst_audio_format_info_fill_silence (convert->in.finfo, out[i], samples);
   }
   return TRUE;
 }
@@ -1274,7 +1278,7 @@ converter_generic (GstAudioConverter * convert,
   /* get frames to pack */
   tmp = audio_chain_get_samples (chain, &produced);
 
-  if (!convert->out_default) {
+  if (!convert->out_default && tmp && out) {
     GST_LOG ("pack %p, %p %" G_GSIZE_FORMAT, tmp, out, produced);
     /* and pack if needed */
     for (i = 0; i < chain->blocks; i++)
@@ -1316,7 +1320,7 @@ converter_resample (GstAudioConverter * convert,
  * @config contains extra configuration options, see `GST_AUDIO_CONVERTER_OPT_*`
  * parameters for details about the options and values.
  *
- * Returns: a #GstAudioConverter or %NULL if conversion is not possible.
+ * Returns: (nullable): a #GstAudioConverter or %NULL if conversion is not possible.
  */
 GstAudioConverter *
 gst_audio_converter_new (GstAudioConverterFlags flags, GstAudioInfo * in_info,

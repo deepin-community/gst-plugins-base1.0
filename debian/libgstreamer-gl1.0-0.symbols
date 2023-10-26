@@ -1,5 +1,28 @@
 libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
 * Build-Depends-Package: libgstreamer-plugins-base1.0-dev
+ GST_GL_CONFIG_ATTRIB_ALPHA_SIZE_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_BLUE_SIZE_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_CAVEAT_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_CONFIG_ID_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_CONFORMANT_API_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_DEPTH_SIZE_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_GREEN_SIZE_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_LEVEL_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_LUMINANCE_SIZE_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_MAX_PBUFFER_HEIGHT_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_MAX_PBUFFER_PIXELS_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_MAX_PBUFFER_WIDTH_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_MAX_SWAP_INTERVAL_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_MIN_SWAP_INTERVAL_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_NATIVE_RENDERABLE_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_NATIVE_VISUAL_ID_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_PLATFORM_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_RED_SIZE_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_RENDERABLE_API_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_SAMPLES_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_SAMPLE_BUFFERS_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_STENCIL_SIZE_NAME@Base 1.20.0
+ GST_GL_CONFIG_ATTRIB_SURFACE_TYPE_NAME@Base 1.20.0
  gst_buffer_add_gl_sync_meta@Base 1.14.0
  gst_buffer_add_gl_sync_meta_full@Base 1.14.0
  gst_buffer_pool_config_get_gl_allocation_params@Base 1.14.0
@@ -50,7 +73,9 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_buffer_allocation_params_get_type@Base 1.14.0
  gst_gl_buffer_allocation_params_new@Base 1.14.0
  gst_gl_buffer_allocator_get_type@Base 1.14.0
+ gst_gl_buffer_get_type@Base 1.20.0
  gst_gl_buffer_init_once@Base 1.14.0
+ gst_gl_buffer_pool_get_gl_allocation_params@Base 1.20.0
  gst_gl_buffer_pool_get_type@Base 1.14.0
  gst_gl_buffer_pool_new@Base 1.14.0
  gst_gl_check_extension@Base 1.14.0
@@ -61,6 +86,10 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_color_convert_perform@Base 1.14.0
  gst_gl_color_convert_set_caps@Base 1.14.0
  gst_gl_color_convert_transform_caps@Base 1.14.0
+ gst_gl_config_caveat_get_type@Base 1.20.0
+ gst_gl_config_caveat_to_string@Base 1.20.0
+ gst_gl_config_surface_type_get_type@Base 1.20.0
+ gst_gl_config_surface_type_to_string@Base 1.20.0
  gst_gl_context_activate@Base 1.14.0
  gst_gl_context_can_share@Base 1.14.0
  gst_gl_context_check_feature@Base 1.14.0
@@ -74,6 +103,7 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_context_error_get_type@Base 1.16.0
  gst_gl_context_error_quark@Base 1.14.0
  gst_gl_context_fill_info@Base 1.14.0
+ gst_gl_context_get_config@Base 1.20.0
  gst_gl_context_get_current@Base 1.14.0
  gst_gl_context_get_current_gl_api@Base 1.14.0
  gst_gl_context_get_current_gl_context@Base 1.14.0
@@ -91,6 +121,7 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_context_is_shared@Base 1.14.0
  gst_gl_context_new@Base 1.14.0
  gst_gl_context_new_wrapped@Base 1.14.0
+ gst_gl_context_request_config@Base 1.20.0
  gst_gl_context_set_shared_with@Base 1.14.0
  gst_gl_context_set_window@Base 1.14.0
  gst_gl_context_supports_glsl_profile_version@Base 1.14.0
@@ -118,6 +149,7 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_display_get_handle_type@Base 1.14.0
  gst_gl_display_get_type@Base 1.14.0
  gst_gl_display_new@Base 1.14.0
+ gst_gl_display_new_with_type@Base 1.20.0
  gst_gl_display_remove_context@Base 1.18.0
  gst_gl_display_remove_window@Base 1.14.0
  gst_gl_display_retrieve_window@Base 1.18.0
@@ -149,6 +181,7 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_framebuffer_get_type@Base 1.14.0
  gst_gl_framebuffer_new@Base 1.14.0
  gst_gl_framebuffer_new_with_default_depth@Base 1.14.0
+ gst_gl_get_affine_transformation_meta_as_ndc@Base 1.20.0
  gst_gl_get_plane_data_size@Base 1.14.0
  gst_gl_get_plane_start@Base 1.14.0
  gst_gl_handle_context_query@Base 1.14.0
@@ -161,22 +194,26 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_memory_egl_allocator_get_type@Base 1.14.0
  gst_gl_memory_egl_get_display@Base 1.14.0
  gst_gl_memory_egl_get_image@Base 1.14.0
+ gst_gl_memory_egl_get_type@Base 1.20.0
  gst_gl_memory_egl_init_once@Base 1.14.0
  gst_gl_memory_get_texture_format@Base 1.14.0
  gst_gl_memory_get_texture_height@Base 1.14.0
  gst_gl_memory_get_texture_id@Base 1.14.0
  gst_gl_memory_get_texture_target@Base 1.14.0
  gst_gl_memory_get_texture_width@Base 1.14.0
+ gst_gl_memory_get_type@Base 1.20.0
  gst_gl_memory_init@Base 1.14.0
  gst_gl_memory_init_once@Base 1.14.0
  gst_gl_memory_pbo_allocator_get_type@Base 1.14.0
  gst_gl_memory_pbo_copy_into_texture@Base 1.14.0
  gst_gl_memory_pbo_download_transfer@Base 1.14.0
+ gst_gl_memory_pbo_get_type@Base 1.20.0
  gst_gl_memory_pbo_init_once@Base 1.14.0
  gst_gl_memory_pbo_upload_transfer@Base 1.14.0
  gst_gl_memory_read_pixels@Base 1.14.0
  gst_gl_memory_setup_buffer@Base 1.14.0
  gst_gl_memory_texsubimage@Base 1.14.0
+ gst_gl_multiply_matrix4@Base 1.20.0
  gst_gl_overlay_compositor_add_caps@Base 1.14.0
  gst_gl_overlay_compositor_draw_overlays@Base 1.14.0
  gst_gl_overlay_compositor_free_overlays@Base 1.14.0
@@ -203,8 +240,10 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_renderbuffer_get_format@Base 1.14.0
  gst_gl_renderbuffer_get_height@Base 1.14.0
  gst_gl_renderbuffer_get_id@Base 1.14.0
+ gst_gl_renderbuffer_get_type@Base 1.20.0
  gst_gl_renderbuffer_get_width@Base 1.14.0
  gst_gl_renderbuffer_init_once@Base 1.14.0
+ gst_gl_set_affine_transformation_meta_from_ndc@Base 1.20.0
  gst_gl_shader_attach@Base 1.14.0
  gst_gl_shader_attach_unlocked@Base 1.14.0
  gst_gl_shader_bind_attribute_location@Base 1.14.0

@@ -41,6 +41,10 @@
 #include <gdk/gdkwin32.h>
 #elif defined (GDK_WINDOWING_QUARTZ)
 #include <gdk/gdkquartz.h>
+#if GTK_CHECK_VERSION(3, 24, 10)
+#include <AppKit/AppKit.h>
+NSView *gdk_quartz_window_get_nsview (GdkWindow * window);
+#endif
 #endif
 
 #include <gst/video/videooverlay.h>
@@ -653,6 +657,9 @@ advanced_seek_button_cb (GtkButton * button, PlaybackApp * app)
   gint64 pos;
   const gchar *text;
   gchar *endptr;
+
+  if (!app->seek_format)
+    return;
 
   fmt = app->seek_format->value;
 
@@ -2172,7 +2179,8 @@ navigation_cmd_cb (GtkButton * button, PlaybackApp * app)
   }
 
   if (cmd != GST_NAVIGATION_COMMAND_INVALID)
-    gst_navigation_send_command (GST_NAVIGATION (app->navigation_element), cmd);
+    gst_navigation_send_event_simple (GST_NAVIGATION (app->navigation_element),
+        gst_navigation_event_new_command (cmd));
 }
 
 #if defined (GDK_WINDOWING_X11) || defined (GDK_WINDOWING_WIN32) || defined (GDK_WINDOWING_QUARTZ)
@@ -2224,6 +2232,13 @@ draw_cb (GtkWidget * widget, cairo_t * cr, PlaybackApp * app)
     return TRUE;
   }
 
+  /* "prepare-window-handle" message might not be posted yet depending on
+   * videosink implementation */
+  if (!app->overlay_element) {
+    app->overlay_element = gst_bin_get_by_interface (GST_BIN (app->pipeline),
+        GST_TYPE_VIDEO_OVERLAY);
+  }
+
   if (app->overlay_element)
     gst_video_overlay_expose (GST_VIDEO_OVERLAY (app->overlay_element));
 
@@ -2261,8 +2276,9 @@ button_press_cb (GtkWidget * widget, GdkEventButton * event, PlaybackApp * app)
   gtk_widget_grab_focus (widget);
 
   if (app->navigation_element)
-    gst_navigation_send_mouse_event (GST_NAVIGATION (app->navigation_element),
-        "mouse-button-press", event->button, event->x, event->y);
+    gst_navigation_send_event_simple (GST_NAVIGATION (app->navigation_element),
+        gst_navigation_event_new_mouse_button_press (event->button, event->x,
+            event->y, event->state));
 
   return FALSE;
 }
@@ -2272,8 +2288,9 @@ button_release_cb (GtkWidget * widget, GdkEventButton * event,
     PlaybackApp * app)
 {
   if (app->navigation_element)
-    gst_navigation_send_mouse_event (GST_NAVIGATION (app->navigation_element),
-        "mouse-button-release", event->button, event->x, event->y);
+    gst_navigation_send_event_simple (GST_NAVIGATION (app->navigation_element),
+        gst_navigation_event_new_mouse_button_release (event->button, event->x,
+            event->y, event->state));
 
   return FALSE;
 }
@@ -2282,8 +2299,9 @@ static gboolean
 key_press_cb (GtkWidget * widget, GdkEventKey * event, PlaybackApp * app)
 {
   if (app->navigation_element)
-    gst_navigation_send_key_event (GST_NAVIGATION (app->navigation_element),
-        "key-press", gdk_keyval_name (event->keyval));
+    gst_navigation_send_event_simple (GST_NAVIGATION (app->navigation_element),
+        gst_navigation_event_new_key_press (gdk_keyval_name (event->keyval),
+            event->state));
 
   return FALSE;
 }
@@ -2292,8 +2310,9 @@ static gboolean
 key_release_cb (GtkWidget * widget, GdkEventKey * event, PlaybackApp * app)
 {
   if (app->navigation_element)
-    gst_navigation_send_key_event (GST_NAVIGATION (app->navigation_element),
-        "key-release", gdk_keyval_name (event->keyval));
+    gst_navigation_send_event_simple (GST_NAVIGATION (app->navigation_element),
+        gst_navigation_event_new_key_release (gdk_keyval_name (event->keyval),
+            event->state));
 
   return FALSE;
 }
@@ -2302,11 +2321,44 @@ static gboolean
 motion_notify_cb (GtkWidget * widget, GdkEventMotion * event, PlaybackApp * app)
 {
   if (app->navigation_element)
-    gst_navigation_send_mouse_event (GST_NAVIGATION (app->navigation_element),
-        "mouse-move", 0, event->x, event->y);
+    gst_navigation_send_event_simple (GST_NAVIGATION (app->navigation_element),
+        gst_navigation_event_new_mouse_move (event->x, event->y, event->state));
 
   return FALSE;
 }
+
+#ifdef G_OS_WIN32
+/* On Windows, videosink elements expect full-size overlay window handle.
+ * And an expectation for window resize scenario is that WM_SIZE event of
+ * parent HWND is forwarded to child window.
+ * But some GUI applications like GTK might handle WM_SIZE event by themselves
+ * and therefore child HWND wouldn't be able to understand any resize event.
+ *
+ * In this example, we will watch "configure-event" of GTK widget and
+ * GstVideoOverlay::set_render_rectangle() will be used to notify videosink
+ * elements of resized render area.
+ */
+static gboolean
+configure_event_cb (GtkWidget * widget, GdkEventConfigure * event,
+    PlaybackApp * app)
+{
+  /* GdkEventConfigure::x and GdkEventConfigure::y are positions of this
+   * video widget relative to parent. So, we should not forward it to videosink.
+   * From videosink point of view, its parent window is this video widget */
+
+  if (!app->overlay_element) {
+    app->overlay_element = gst_bin_get_by_interface (GST_BIN (app->pipeline),
+        GST_TYPE_VIDEO_OVERLAY);
+  }
+
+  if (app->overlay_element) {
+    gst_video_overlay_set_render_rectangle (GST_VIDEO_OVERLAY
+        (app->overlay_element), 0, 0, event->width, event->height);
+  }
+
+  return FALSE;
+}
+#endif
 
 static void
 msg_eos (GstBus * bus, GstMessage * message, PlaybackApp * app)
@@ -2440,6 +2492,10 @@ connect_bus_signals (PlaybackApp * app)
   gst_object_unref (bus);
 }
 
+#if !GLIB_CHECK_VERSION(2,70,0)
+#define g_pattern_spec_match_string g_pattern_match_string
+#endif
+
 /* Return GList of paths described in location string */
 static GList *
 handle_wildcards (const gchar * location)
@@ -2459,7 +2515,7 @@ handle_wildcards (const gchar * location)
   }
 
   while ((name = g_dir_read_name (dir)) != NULL) {
-    if (g_pattern_match_string (pspec, name)) {
+    if (g_pattern_spec_match_string (pspec, name)) {
       res = g_list_append (res, g_strjoin ("/", path, name, NULL));
       g_print ("  found clip %s\n", name);
     }
@@ -2679,6 +2735,10 @@ create_ui (PlaybackApp * app)
       G_CALLBACK (key_release_cb), app);
   g_signal_connect (app->video_window, "motion-notify-event",
       G_CALLBACK (motion_notify_cb), app);
+#ifdef G_OS_WIN32
+  g_signal_connect (app->video_window, "configure-event",
+      G_CALLBACK (configure_event_cb), app);
+#endif
   gtk_widget_set_can_focus (app->video_window, TRUE);
   gtk_widget_add_events (app->video_window,
       GDK_POINTER_MOTION_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK
@@ -3377,7 +3437,8 @@ create_ui (PlaybackApp * app)
   } else {
     playbin = NULL;
   }
-
+  if (app->pipeline_type == 0)
+    gtk_window_set_title (GTK_WINDOW (app->window), app->current_path->data);
   /* do the packing stuff ... */
   gtk_window_set_default_size (GTK_WINDOW (app->window), 250, 96);
   /* FIXME: can we avoid this for audio only? */

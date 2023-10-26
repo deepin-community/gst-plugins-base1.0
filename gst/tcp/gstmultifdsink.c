@@ -104,7 +104,7 @@
 #include "config.h"
 #endif
 
-#include <gst/gst-i18n-plugin.h>
+#include <glib/gi18n-lib.h>
 
 #include <sys/ioctl.h>
 
@@ -119,7 +119,12 @@
 #include <sys/stat.h>
 #include <netinet/in.h>
 
+#include "gsttcpelements.h"
 #include "gstmultifdsink.h"
+
+#if !defined(FIONREAD) && defined(__sun)
+#include <sys/filio.h>
+#endif
 
 #define NOT_IMPLEMENTED 0
 
@@ -194,6 +199,8 @@ static void gst_multi_fd_sink_get_property (GObject * object, guint prop_id,
 
 #define gst_multi_fd_sink_parent_class parent_class
 G_DEFINE_TYPE (GstMultiFdSink, gst_multi_fd_sink, GST_TYPE_MULTI_HANDLE_SINK);
+GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (multifdsink, "multifdsink",
+    GST_RANK_NONE, GST_TYPE_MULTI_FD_SINK, tcp_element_init (plugin));
 
 static guint gst_multi_fd_sink_signals[LAST_SIGNAL] = { 0 };
 
@@ -668,7 +675,7 @@ gst_multi_fd_sink_handle_client_write (GstMultiFdSink * sink,
 {
   gboolean more;
   gboolean flushing;
-  GstClockTime now;
+  GstClockTime now, now_monotonic;
   GstMultiHandleSink *mhsink = GST_MULTI_HANDLE_SINK (sink);
   GstMultiHandleSinkClass *mhsinkclass =
       GST_MULTI_HANDLE_SINK_GET_CLASS (mhsink);
@@ -682,6 +689,7 @@ gst_multi_fd_sink_handle_client_write (GstMultiFdSink * sink,
     gint maxsize;
 
     now = g_get_real_time () * GST_USECOND;
+    now_monotonic = g_get_monotonic_time () * GST_USECOND;
 
     if (!mhclient->sending) {
       /* client is not working on a buffer */
@@ -808,6 +816,7 @@ gst_multi_fd_sink_handle_client_write (GstMultiFdSink * sink,
         /* update stats */
         mhclient->bytes_sent += wrote;
         mhclient->last_activity_time = now;
+        mhclient->last_activity_time_monotonic = now_monotonic;
         mhsink->bytes_served += wrote;
       }
     }
@@ -900,7 +909,7 @@ gst_multi_fd_sink_handle_clients (GstMultiFdSink * sink)
     if (G_UNLIKELY (result == 0)) {
       GstClockTime now;
 
-      now = g_get_real_time () * GST_USECOND;
+      now = g_get_monotonic_time () * GST_USECOND;
 
       CLIENTS_LOCK (mhsink);
       for (clients = mhsink->clients; clients; clients = next) {
@@ -911,7 +920,7 @@ gst_multi_fd_sink_handle_clients (GstMultiFdSink * sink)
         mhclient = (GstMultiHandleClient *) client;
         next = g_list_next (clients);
         if (mhsink->timeout > 0
-            && now - mhclient->last_activity_time > mhsink->timeout) {
+            && now - mhclient->last_activity_time_monotonic > mhsink->timeout) {
           mhclient->status = GST_CLIENT_STATUS_SLOW;
           gst_multi_handle_sink_remove_client_link (mhsink, clients);
         }

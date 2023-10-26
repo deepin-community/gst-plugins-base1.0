@@ -136,7 +136,10 @@ static void gst_audio_resample_push_drain (GstAudioResample * resample,
 
 #define gst_audio_resample_parent_class parent_class
 G_DEFINE_TYPE (GstAudioResample, gst_audio_resample, GST_TYPE_BASE_TRANSFORM);
-
+GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (audioresample, "audioresample",
+    GST_RANK_PRIMARY, GST_TYPE_AUDIO_RESAMPLE,
+    GST_DEBUG_CATEGORY_INIT (audio_resample_debug, "audioresample", 0,
+        "audio resampling element"));
 static void
 gst_audio_resample_class_init (GstAudioResampleClass * klass)
 {
@@ -756,6 +759,9 @@ gst_audio_resample_process (GstAudioResample * resample, GstBuffer * inbuf,
   in_len = srcabuf.n_samples;
   out_len = gst_audio_converter_get_out_frames (resample->converter, in_len);
 
+  GST_DEBUG_OBJECT (resample, "in %" G_GSIZE_FORMAT " frames, out %"
+      G_GSIZE_FORMAT " frames", in_len, out_len);
+
   /* ensure that the output buffer is not bigger than what we need */
   gst_buffer_set_size (outbuf, out_len * resample->in.bpf);
 
@@ -971,6 +977,11 @@ gst_audio_resample_submit_input_buffer (GstBaseTransform * base,
   GstAudioResample *resample = GST_AUDIO_RESAMPLE (base);
 
   if (base->segment.format == GST_FORMAT_TIME) {
+    if (!GST_AUDIO_INFO_IS_VALID (&resample->in)) {
+      GST_WARNING_OBJECT (resample, "Got buffer, but not negotiated yet!");
+      return GST_FLOW_NOT_NEGOTIATED;
+    }
+
     input =
         gst_audio_buffer_clip (input, &base->segment, resample->in.rate,
         resample->in.bpf);
@@ -1121,15 +1132,7 @@ gst_audio_resample_get_property (GObject * object, guint prop_id,
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
-  GST_DEBUG_CATEGORY_INIT (audio_resample_debug, "audioresample", 0,
-      "audio resampling element");
-
-  if (!gst_element_register (plugin, "audioresample", GST_RANK_PRIMARY,
-          GST_TYPE_AUDIO_RESAMPLE)) {
-    return FALSE;
-  }
-
-  return TRUE;
+  return GST_ELEMENT_REGISTER (audioresample, plugin);
 }
 
 GST_PLUGIN_DEFINE (GST_VERSION_MAJOR,

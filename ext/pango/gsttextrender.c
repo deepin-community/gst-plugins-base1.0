@@ -42,12 +42,13 @@
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
-
+#include <string.h>
 #include <gst/gst.h>
 #include <gst/video/video.h>
 
 #include "gsttextrender.h"
-#include <string.h>
+#include "gstpangoelements.h"
+
 
 #if G_BYTE_ORDER == G_LITTLE_ENDIAN
 # define CAIRO_ARGB_A 3
@@ -165,6 +166,8 @@ static void gst_text_render_adjust_values_with_fontdesc (GstTextRender *
 
 #define gst_text_render_parent_class parent_class
 G_DEFINE_TYPE (GstTextRender, gst_text_render, GST_TYPE_ELEMENT);
+GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (textrender, "textrender",
+    GST_RANK_NONE, GST_TYPE_TEXT_RENDER, pango_element_init (plugin));
 
 static void gst_text_render_finalize (GObject * object);
 static void gst_text_render_set_property (GObject * object,
@@ -528,7 +531,10 @@ gst_text_render_chain (GstPad * pad, GstObject * parent, GstBuffer * inbuf)
 
   /* render text */
   GST_DEBUG ("rendering '%*s'", (gint) size, data);
-  pango_layout_set_markup (render->layout, (gchar *) data, size);
+  if (render->have_pango_markup)
+    pango_layout_set_markup (render->layout, (gchar *) data, size);
+  else
+    pango_layout_set_text (render->layout, (gchar *) data, size);
   gst_text_render_render_pangocairo (render);
   gst_buffer_unmap (inbuf, &map);
 
@@ -627,8 +633,44 @@ gst_text_render_event (GstPad * pad, GstObject * parent, GstEvent * event)
       }
       break;
     }
+    case GST_EVENT_CAPS:
+    {
+      GstCaps *caps;
+      GstStructure *structure;
+      const gchar *format;
+
+      gst_event_parse_caps (event, &caps);
+
+      structure = gst_caps_get_structure (caps, 0);
+      format = gst_structure_get_string (structure, "format");
+      render->have_pango_markup = (strcmp (format, "pango-markup") == 0);
+
+      gst_event_unref (event);
+      ret = TRUE;
+
+      break;
+    }
+    case GST_EVENT_GAP:
+      /* Negotiate caps first if we negotiated none so far as otherwise
+       * downstream wouldn't have received a segment event either and
+       * wouldn't know what to do with the gap event */
+      if (!gst_pad_has_current_caps (render->srcpad)) {
+        if (gst_text_render_renegotiate (render) != GST_FLOW_OK) {
+          gst_event_unref (event);
+          ret = FALSE;
+          break;
+        }
+      }
+
+      if (render->segment_event) {
+        gst_pad_push_event (render->srcpad, render->segment_event);
+        render->segment_event = NULL;
+      }
+
+      ret = gst_pad_event_default (pad, parent, event);
+      break;
     default:
-      ret = gst_pad_push_event (render->srcpad, event);
+      ret = gst_pad_event_default (pad, parent, event);
       break;
   }
 

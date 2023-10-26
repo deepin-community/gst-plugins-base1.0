@@ -43,9 +43,6 @@
  *    clipped properly during blitting (if wrapping is disabled)
  */
 
-GST_DEBUG_CATEGORY (pango_debug);
-#define GST_CAT_DEFAULT pango_debug
-
 #define DEFAULT_PROP_TEXT 	""
 #define DEFAULT_PROP_SHADING	FALSE
 #define DEFAULT_PROP_VALIGNMENT	GST_BASE_TEXT_OVERLAY_VALIGN_BASELINE
@@ -114,6 +111,9 @@ enum
   PROP_TEXT_HEIGHT,
   PROP_LAST
 };
+
+GST_DEBUG_CATEGORY_STATIC (base_text_overlay_debug);
+#define GST_CAT_DEFAULT base_text_overlay_debug
 
 #define VIDEO_FORMATS GST_VIDEO_OVERLAY_COMPOSITION_BLEND_FORMATS
 
@@ -348,6 +348,9 @@ gst_base_text_overlay_class_init (GstBaseTextOverlayClass * klass)
   GObjectClass *gobject_class;
   GstElementClass *gstelement_class;
 
+  GST_DEBUG_CATEGORY_INIT (base_text_overlay_debug, "basetextoverlay", 0,
+      "Base Text Overlay");
+
   gobject_class = (GObjectClass *) klass;
   gstelement_class = (GstElementClass *) klass;
 
@@ -427,7 +430,7 @@ gst_base_text_overlay_class_init (GstBaseTextOverlayClass * klass)
    */
   g_object_class_install_property (G_OBJECT_CLASS (klass), PROP_TEXT_Y,
       g_param_spec_int ("text-y", "vertical position",
-          "Resulting X position of font rendering.", -G_MAXINT,
+          "Resulting Y position of font rendering.", -G_MAXINT,
           G_MAXINT, DEFAULT_PROP_TEXT_Y, G_PARAM_READABLE));
 
   /**
@@ -773,6 +776,8 @@ gst_base_text_overlay_init (GstBaseTextOverlay * overlay,
       (PangoAlignment) overlay->line_align);
 
   overlay->text_buffer = NULL;
+  overlay->text_buffer_running_time = GST_CLOCK_TIME_NONE;
+  overlay->text_buffer_running_time_end = GST_CLOCK_TIME_NONE;
   overlay->text_linked = FALSE;
 
   overlay->composition = NULL;
@@ -2396,6 +2401,18 @@ gst_base_text_overlay_text_event (GstPad * pad, GstObject * parent,
   GST_LOG_OBJECT (pad, "received event %s", GST_EVENT_TYPE_NAME (event));
 
   switch (GST_EVENT_TYPE (event)) {
+    case GST_EVENT_STREAM_START:
+      /* Clear any pending EOS and segment on a new stream start */
+      GST_BASE_TEXT_OVERLAY_LOCK (overlay);
+      GST_INFO_OBJECT (overlay, "text stream-start");
+      overlay->text_flushing = FALSE;
+      overlay->text_eos = FALSE;
+      gst_base_text_overlay_pop_text (overlay);
+      gst_segment_init (&overlay->text_segment, GST_FORMAT_TIME);
+      GST_BASE_TEXT_OVERLAY_UNLOCK (overlay);
+      gst_event_unref (event);
+      ret = TRUE;
+      break;
     case GST_EVENT_CAPS:
     {
       GstCaps *caps;
@@ -2506,6 +2523,16 @@ gst_base_text_overlay_video_event (GstPad * pad, GstObject * parent,
   GST_DEBUG_OBJECT (pad, "received event %s", GST_EVENT_TYPE_NAME (event));
 
   switch (GST_EVENT_TYPE (event)) {
+    case GST_EVENT_STREAM_START:
+      /* Clear any EOS and segment on a new stream */
+      GST_BASE_TEXT_OVERLAY_LOCK (overlay);
+      GST_INFO_OBJECT (overlay, "video stream-start");
+      overlay->video_flushing = FALSE;
+      overlay->video_eos = FALSE;
+      gst_segment_init (&overlay->segment, GST_FORMAT_TIME);
+      GST_BASE_TEXT_OVERLAY_UNLOCK (overlay);
+      ret = gst_pad_event_default (pad, parent, event);
+      break;
     case GST_EVENT_CAPS:
     {
       GstCaps *caps;
@@ -2607,6 +2634,8 @@ gst_base_text_overlay_pop_text (GstBaseTextOverlay * overlay)
         overlay->text_buffer);
     gst_buffer_unref (overlay->text_buffer);
     overlay->text_buffer = NULL;
+    overlay->text_buffer_running_time = overlay->text_buffer_running_time_end =
+        GST_CLOCK_TIME_NONE;
   }
 
   /* Let the text task know we used that buffer */
@@ -2684,8 +2713,29 @@ gst_base_text_overlay_text_chain (GstPad * pad, GstObject * parent,
       }
     }
 
-    if (GST_BUFFER_TIMESTAMP_IS_VALID (buffer))
+    /* Calculate and store the running time for this text buffer in 
+     * the current segment. We might receive a new text pad segment
+     * event while this buffer is still active, and that would
+     * lead to incorrect running time calculations if we did it later.
+     */
+    overlay->text_buffer_running_time = overlay->text_buffer_running_time_end =
+        GST_CLOCK_TIME_NONE;
+
+    if (GST_BUFFER_TIMESTAMP_IS_VALID (buffer)) {
+      GstClockTime text_start = GST_BUFFER_TIMESTAMP (buffer);
+
       overlay->text_segment.position = clip_start;
+      overlay->text_buffer_running_time =
+          gst_segment_to_running_time (&overlay->text_segment,
+          GST_FORMAT_TIME, text_start);
+
+      if (GST_BUFFER_DURATION_IS_VALID (buffer)) {
+        GstClockTime text_end = text_start + GST_BUFFER_DURATION (buffer);
+        overlay->text_buffer_running_time_end =
+            gst_segment_to_running_time (&overlay->text_segment,
+            GST_FORMAT_TIME, text_end);
+      }
+    }
 
     overlay->text_buffer = buffer;      /* pass ownership of @buffer */
     buffer = NULL;
@@ -2831,23 +2881,19 @@ wait_for_text_buf:
     /* Text pad linked, check if we have a text buffer queued */
     if (overlay->text_buffer) {
       gboolean pop_text = FALSE, valid_text_time = TRUE;
-      GstClockTime text_start = GST_CLOCK_TIME_NONE;
-      GstClockTime text_end = GST_CLOCK_TIME_NONE;
-      GstClockTime text_running_time = GST_CLOCK_TIME_NONE;
-      GstClockTime text_running_time_end = GST_CLOCK_TIME_NONE;
+      GstClockTime text_running_time = overlay->text_buffer_running_time;
+      GstClockTime text_running_time_end =
+          overlay->text_buffer_running_time_end;
       GstClockTime vid_running_time, vid_running_time_end;
 
       /* if the text buffer isn't stamped right, pop it off the
        * queue and display it for the current video frame only */
-      if (!GST_BUFFER_TIMESTAMP_IS_VALID (overlay->text_buffer) ||
-          !GST_BUFFER_DURATION_IS_VALID (overlay->text_buffer)) {
+      if (!GST_CLOCK_TIME_IS_VALID (overlay->text_buffer_running_time) ||
+          !GST_CLOCK_TIME_IS_VALID (overlay->text_buffer_running_time_end)) {
         GST_WARNING_OBJECT (overlay,
             "Got text buffer with invalid timestamp or duration");
         pop_text = TRUE;
         valid_text_time = FALSE;
-      } else {
-        text_start = GST_BUFFER_TIMESTAMP (overlay->text_buffer);
-        text_end = text_start + GST_BUFFER_DURATION (overlay->text_buffer);
       }
 
       vid_running_time =
@@ -2856,16 +2902,6 @@ wait_for_text_buf:
       vid_running_time_end =
           gst_segment_to_running_time (&overlay->segment, GST_FORMAT_TIME,
           stop);
-
-      /* If timestamp and duration are valid */
-      if (valid_text_time) {
-        text_running_time =
-            gst_segment_to_running_time (&overlay->text_segment,
-            GST_FORMAT_TIME, text_start);
-        text_running_time_end =
-            gst_segment_to_running_time (&overlay->text_segment,
-            GST_FORMAT_TIME, text_end);
-      }
 
       GST_LOG_OBJECT (overlay, "T: %" GST_TIME_FORMAT " - %" GST_TIME_FORMAT,
           GST_TIME_ARGS (text_running_time),
@@ -3075,28 +3111,3 @@ gst_base_text_overlay_change_state (GstElement * element,
 
   return ret;
 }
-
-static gboolean
-plugin_init (GstPlugin * plugin)
-{
-  if (!gst_element_register (plugin, "textoverlay", GST_RANK_NONE,
-          GST_TYPE_TEXT_OVERLAY) ||
-      !gst_element_register (plugin, "timeoverlay", GST_RANK_NONE,
-          GST_TYPE_TIME_OVERLAY) ||
-      !gst_element_register (plugin, "clockoverlay", GST_RANK_NONE,
-          GST_TYPE_CLOCK_OVERLAY) ||
-      !gst_element_register (plugin, "textrender", GST_RANK_NONE,
-          GST_TYPE_TEXT_RENDER)) {
-    return FALSE;
-  }
-
-  /*texttestsrc_plugin_init(module, plugin); */
-
-  GST_DEBUG_CATEGORY_INIT (pango_debug, "pango", 0, "Pango elements");
-
-  return TRUE;
-}
-
-GST_PLUGIN_DEFINE (GST_VERSION_MAJOR, GST_VERSION_MINOR,
-    pango, "Pango-based text rendering and overlay", plugin_init,
-    VERSION, GST_LICENSE, GST_PACKAGE_NAME, GST_PACKAGE_ORIGIN)

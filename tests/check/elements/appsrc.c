@@ -22,7 +22,7 @@
 #include "config.h"
 #endif
 
-#include <gst/check/gstcheck.h>
+#include <gst/check/check.h>
 #include <gst/app/gstappsrc.h>
 #include <gst/app/gstappsink.h>
 
@@ -705,11 +705,35 @@ appsrc_pad_probe (GstPad * pad, GstPadProbeInfo * info, gpointer user_data)
     fail_unless_equals_uint64 (GST_BUFFER_DURATION (recvbuf),
         GST_BUFFER_DURATION (exp_buf));
 
+    gst_buffer_unref (exp_buf);
     g_list_free1 (*expected);
     *expected = next;
   }
 
   return GST_PAD_PROBE_OK;
+}
+
+typedef struct
+{
+  GMutex lock;
+  GCond cond;
+
+  GstClockTime expected_last_pts;
+  guint last_buf_count;
+} SegmentTestData;
+
+static void
+custom_segment_handoff_cb (GstElement * sink, GstBuffer * buf, GstPad * pad,
+    gpointer * user_data)
+{
+  SegmentTestData *data = (SegmentTestData *) user_data;
+
+  if (GST_BUFFER_PTS (buf) == data->expected_last_pts) {
+    g_mutex_lock (&data->lock);
+    data->last_buf_count++;
+    g_cond_signal (&data->cond);
+    g_mutex_unlock (&data->lock);
+  }
 }
 
 /* Assuming application driven streaming with multiple period.
@@ -731,6 +755,12 @@ GST_START_TEST (test_appsrc_period_with_custom_segment)
   gulong probe_id;
   GstPad *pad;
   GList *expected = NULL;
+  SegmentTestData test_data;
+
+  g_mutex_init (&test_data.lock);
+  g_cond_init (&test_data.cond);
+  test_data.last_buf_count = 0;
+  test_data.expected_last_pts = 5 * GST_SECOND;
 
   for (i = 0; i < G_N_ELEMENTS (modes); i++) {
     /* mode 0: stream-type == GST_APP_STREAM_TYPE_STREAM
@@ -755,6 +785,12 @@ GST_START_TEST (test_appsrc_period_with_custom_segment)
     if (modes[i] != GST_APP_STREAM_TYPE_STREAM) {
       cb.seek_data = seek_cb;
       gst_app_src_set_callbacks (GST_APP_SRC (src), &cb, NULL, NULL);
+
+      test_data.last_buf_count = 0;
+
+      g_object_set (sink, "signal-handoffs", TRUE, NULL);
+      g_signal_connect (sink, "handoff",
+          G_CALLBACK (custom_segment_handoff_cb), &test_data);
     }
 
     ASSERT_SET_STATE (pipe, GST_STATE_PLAYING, GST_STATE_CHANGE_ASYNC);
@@ -782,7 +818,7 @@ GST_START_TEST (test_appsrc_period_with_custom_segment)
       sample = gst_sample_new (buffer, NULL, &segment, NULL);
 
       expected = g_list_append (expected, gst_event_new_segment (&segment));
-      expected = g_list_append (expected, buffer);
+      expected = g_list_append (expected, gst_buffer_ref (buffer));
 
       /* 1st sample includes buffer and segment */
       fail_unless (gst_app_src_push_sample (GST_APP_SRC (src), sample)
@@ -797,7 +833,7 @@ GST_START_TEST (test_appsrc_period_with_custom_segment)
         buffer = gst_buffer_new_and_alloc (4);
         GST_BUFFER_DTS (buffer) = GST_BUFFER_PTS (buffer) = j * GST_SECOND;
         GST_BUFFER_DURATION (buffer) = GST_SECOND;
-        expected = g_list_append (expected, buffer);
+        expected = g_list_append (expected, gst_buffer_ref (buffer));
         fail_unless (gst_app_src_push_buffer (GST_APP_SRC (src), buffer)
             == GST_FLOW_OK);
       }
@@ -809,10 +845,12 @@ GST_START_TEST (test_appsrc_period_with_custom_segment)
        * new custom segment */
 
       GstClockTime requested_pos = 7 * GST_SECOND;
-      /* In this test case, we are checking the serialized order of
-       * events and buffers, so, give some time to the appsrc loop to
-       * push all to sink */
-      g_usleep (G_USEC_PER_SEC * 1);
+
+      /* Wait all buffers of two periods to be consumed */
+      g_mutex_lock (&test_data.lock);
+      while (test_data.last_buf_count != 2)
+        g_cond_wait (&test_data.cond, &test_data.lock);
+      g_mutex_unlock (&test_data.lock);
 
       GST_DEBUG ("Seek to %" GST_TIME_FORMAT, GST_TIME_ARGS (requested_pos));
       event = gst_event_new_seek (1.0, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH,
@@ -832,7 +870,7 @@ GST_START_TEST (test_appsrc_period_with_custom_segment)
       sample = gst_sample_new (buffer, NULL, &segment, NULL);
 
       expected = g_list_append (expected, gst_event_new_segment (&segment));
-      expected = g_list_append (expected, buffer);
+      expected = g_list_append (expected, gst_buffer_ref (buffer));
 
       /* 1st sample includes buffer and segment */
       fail_unless (gst_app_src_push_sample (GST_APP_SRC (src), sample)
@@ -847,7 +885,7 @@ GST_START_TEST (test_appsrc_period_with_custom_segment)
         buffer = gst_buffer_new_and_alloc (4);
         GST_BUFFER_DTS (buffer) = GST_BUFFER_PTS (buffer) = j * GST_SECOND;
         GST_BUFFER_DURATION (buffer) = GST_SECOND;
-        expected = g_list_append (expected, buffer);
+        expected = g_list_append (expected, gst_buffer_ref (buffer));
         fail_unless (gst_app_src_push_buffer (GST_APP_SRC (src), buffer)
             == GST_FLOW_OK);
       }
@@ -870,6 +908,9 @@ GST_START_TEST (test_appsrc_period_with_custom_segment)
     gst_object_unref (pipe);
     fail_if (expected != NULL);
   }
+
+  g_mutex_clear (&test_data.lock);
+  g_cond_clear (&test_data.cond);
 }
 
 GST_END_TEST;
@@ -959,7 +1000,7 @@ GST_START_TEST (test_appsrc_custom_segment_twice)
       } else {
         sample = gst_sample_new (buffer, NULL, &segment, NULL);
         expected = g_list_append (expected, gst_event_new_segment (&segment));
-        expected = g_list_append (expected, buffer);
+        expected = g_list_append (expected, gst_buffer_ref (buffer));
       }
       /* PUSH THE FIRST SAMPLE */
       fail_unless (gst_app_src_push_sample (GST_APP_SRC (src), sample)
@@ -984,11 +1025,11 @@ GST_START_TEST (test_appsrc_custom_segment_twice)
       if (tc == 0 || tc == 1) {
         /* Test Case 0 or 1: Push a sample with duplicated segment */
         sample = gst_sample_new (buffer, NULL, &segment, NULL);
-        expected = g_list_append (expected, buffer);
+        expected = g_list_append (expected, gst_buffer_ref (buffer));
       } else {
         sample = gst_sample_new (buffer, NULL, &segment, NULL);
         expected = g_list_append (expected, gst_event_new_segment (&segment));
-        expected = g_list_append (expected, buffer);
+        expected = g_list_append (expected, gst_buffer_ref (buffer));
       }
 
       fail_unless (gst_app_src_push_sample (GST_APP_SRC (src), sample)
@@ -1021,6 +1062,385 @@ GST_START_TEST (test_appsrc_custom_segment_twice)
 
 GST_END_TEST;
 
+static GstPadProbeReturn
+block_probe (GstPad * pad, GstPadProbeInfo * info, gpointer user_data)
+{
+  return GST_PAD_PROBE_OK;
+}
+
+GST_START_TEST (test_appsrc_limits)
+{
+  GstHarness *h;
+  GstPad *srcpad;
+  GstBuffer *buffer;
+  gulong probe_id;
+  guint64 current_level;
+
+  /* Test if the bytes limit works correctly with both leaky types */
+  h = gst_harness_new ("appsrc");
+  g_object_set (h->element,
+      "format", GST_FORMAT_TIME,
+      "max-bytes", G_GUINT64_CONSTANT (200),
+      "max-time", G_GUINT64_CONSTANT (0),
+      "max-buffers", G_GUINT64_CONSTANT (0), "leaky-type", 1 /* upstream */ ,
+      NULL);
+  gst_harness_play (h);
+  srcpad = gst_element_get_static_pad (h->element, "src");
+
+  /* Pad probe to ensure that the source pad task is blocked and we can
+   * deterministically test the behaviour of the appsrc queue */
+  probe_id =
+      gst_pad_add_probe (srcpad,
+      GST_PAD_PROBE_TYPE_BUFFER | GST_PAD_PROBE_TYPE_BUFFER_LIST |
+      GST_PAD_PROBE_TYPE_BLOCKING, block_probe, NULL, NULL);
+
+  buffer = gst_buffer_new_and_alloc (100);
+  GST_BUFFER_PTS (buffer) = 0 * GST_SECOND;
+  gst_app_src_push_buffer (GST_APP_SRC (h->element), buffer);
+
+  /* wait until the appsrc is blocked downstream */
+  while (!gst_pad_is_blocking (srcpad))
+    g_thread_yield ();
+
+  buffer = gst_buffer_new_and_alloc (100);
+  GST_BUFFER_PTS (buffer) = 1 * GST_SECOND;
+  gst_app_src_push_buffer (GST_APP_SRC (h->element), buffer);
+  buffer = gst_buffer_new_and_alloc (100);
+  GST_BUFFER_PTS (buffer) = 2 * GST_SECOND;
+  gst_app_src_push_buffer (GST_APP_SRC (h->element), buffer);
+
+  /* The first buffer is not queued anymore but inside the pad probe */
+  g_object_get (h->element, "current-level-bytes", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 200);
+  g_object_get (h->element, "current-level-buffers", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 2);
+  g_object_get (h->element, "current-level-time", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 1 * GST_SECOND);
+
+  buffer = gst_buffer_new_and_alloc (100);
+  GST_BUFFER_PTS (buffer) = 4 * GST_SECOND;
+  gst_app_src_push_buffer (GST_APP_SRC (h->element), buffer);
+
+  /* The new buffer was dropped now, otherwise we would have 2 seconds queued */
+  g_object_get (h->element, "current-level-bytes", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 200);
+  g_object_get (h->element, "current-level-buffers", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 2);
+  g_object_get (h->element, "current-level-time", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 1 * GST_SECOND);
+
+  g_object_set (h->element, "leaky-type", 2 /* downstream */ , NULL);
+
+  buffer = gst_buffer_new_and_alloc (100);
+  GST_BUFFER_PTS (buffer) = 4 * GST_SECOND;
+  gst_app_src_push_buffer (GST_APP_SRC (h->element), buffer);
+
+  /* The oldest buffer was dropped now, otherwise we would have only 1 second queued */
+  g_object_get (h->element, "current-level-bytes", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 200);
+  g_object_get (h->element, "current-level-buffers", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 2);
+  /* 3s because the last dequeued buffer had an end timestamp of 0s, the
+   * buffer with timestamp 1s was dropped and the newly queued buffer has a
+   * start timestamp of 4s */
+  g_object_get (h->element, "current-level-time", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 3 * GST_SECOND);
+
+  /* Remove probe and check if we get all buffers we're supposed to get */
+  gst_pad_remove_probe (srcpad, probe_id);
+
+  buffer = gst_harness_pull (h);
+  fail_unless (buffer);
+  fail_unless_equals_uint64 (GST_BUFFER_PTS (buffer), 0 * GST_SECOND);
+  gst_buffer_unref (buffer);
+
+  buffer = gst_harness_pull (h);
+  fail_unless (buffer);
+  fail_unless_equals_uint64 (GST_BUFFER_PTS (buffer), 2 * GST_SECOND);
+  /* DISCONT because the buffer with 1s was dropped */
+  fail_unless (GST_BUFFER_IS_DISCONT (buffer));
+  gst_buffer_unref (buffer);
+
+  buffer = gst_harness_pull (h);
+  fail_unless (buffer);
+  fail_unless_equals_uint64 (GST_BUFFER_PTS (buffer), 4 * GST_SECOND);
+  /* DISCONT because the first buffer with 4s was dropped */
+  fail_unless (GST_BUFFER_IS_DISCONT (buffer));
+  gst_buffer_unref (buffer);
+
+  gst_object_unref (srcpad);
+  gst_harness_teardown (h);
+
+  /* Test if the buffers limit works correctly with both leaky types */
+  h = gst_harness_new ("appsrc");
+  g_object_set (h->element,
+      "format", GST_FORMAT_TIME,
+      "max-bytes", G_GUINT64_CONSTANT (0),
+      "max-time", G_GUINT64_CONSTANT (0),
+      "max-buffers", G_GUINT64_CONSTANT (2), "leaky-type", 1 /* upstream */ ,
+      NULL);
+  gst_harness_play (h);
+  srcpad = gst_element_get_static_pad (h->element, "src");
+
+  /* Pad probe to ensure that the source pad task is blocked and we can
+   * deterministically test the behaviour of the appsrc queue */
+  probe_id =
+      gst_pad_add_probe (srcpad,
+      GST_PAD_PROBE_TYPE_BUFFER | GST_PAD_PROBE_TYPE_BUFFER_LIST |
+      GST_PAD_PROBE_TYPE_BLOCKING, block_probe, NULL, NULL);
+
+  buffer = gst_buffer_new_and_alloc (100);
+  GST_BUFFER_PTS (buffer) = 0 * GST_SECOND;
+  gst_app_src_push_buffer (GST_APP_SRC (h->element), buffer);
+
+  /* wait until the appsrc is blocked downstream */
+  while (!gst_pad_is_blocking (srcpad))
+    g_thread_yield ();
+
+  buffer = gst_buffer_new_and_alloc (100);
+  GST_BUFFER_PTS (buffer) = 1 * GST_SECOND;
+  gst_app_src_push_buffer (GST_APP_SRC (h->element), buffer);
+  buffer = gst_buffer_new_and_alloc (100);
+  GST_BUFFER_PTS (buffer) = 2 * GST_SECOND;
+  gst_app_src_push_buffer (GST_APP_SRC (h->element), buffer);
+
+  /* The first buffer is not queued anymore but inside the pad probe */
+  g_object_get (h->element, "current-level-bytes", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 200);
+  g_object_get (h->element, "current-level-buffers", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 2);
+  g_object_get (h->element, "current-level-time", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 1 * GST_SECOND);
+
+  buffer = gst_buffer_new_and_alloc (100);
+  GST_BUFFER_PTS (buffer) = 4 * GST_SECOND;
+  gst_app_src_push_buffer (GST_APP_SRC (h->element), buffer);
+
+  /* The new buffer was dropped now, otherwise we would have 2 seconds queued */
+  g_object_get (h->element, "current-level-bytes", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 200);
+  g_object_get (h->element, "current-level-buffers", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 2);
+  g_object_get (h->element, "current-level-time", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 1 * GST_SECOND);
+
+  g_object_set (h->element, "leaky-type", 2 /* downstream */ , NULL);
+
+  buffer = gst_buffer_new_and_alloc (100);
+  GST_BUFFER_PTS (buffer) = 4 * GST_SECOND;
+  gst_app_src_push_buffer (GST_APP_SRC (h->element), buffer);
+
+  /* The oldest buffer was dropped now, otherwise we would have only 1 second queued */
+  g_object_get (h->element, "current-level-bytes", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 200);
+  g_object_get (h->element, "current-level-buffers", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 2);
+  /* 3s because the last dequeued buffer had an end timestamp of 0s, the
+   * buffer with timestamp 1s was dropped and the newly queued buffer has a
+   * start timestamp of 4s */
+  g_object_get (h->element, "current-level-time", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 3 * GST_SECOND);
+
+  /* Remove probe and check if we get all buffers we're supposed to get */
+  gst_pad_remove_probe (srcpad, probe_id);
+
+  buffer = gst_harness_pull (h);
+  fail_unless (buffer);
+  fail_unless_equals_uint64 (GST_BUFFER_PTS (buffer), 0 * GST_SECOND);
+  gst_buffer_unref (buffer);
+
+  buffer = gst_harness_pull (h);
+  fail_unless (buffer);
+  fail_unless_equals_uint64 (GST_BUFFER_PTS (buffer), 2 * GST_SECOND);
+  /* DISCONT because the buffer with 1s was dropped */
+  fail_unless (GST_BUFFER_IS_DISCONT (buffer));
+  gst_buffer_unref (buffer);
+
+  buffer = gst_harness_pull (h);
+  fail_unless (buffer);
+  fail_unless_equals_uint64 (GST_BUFFER_PTS (buffer), 4 * GST_SECOND);
+  /* DISCONT because the first buffer with 4s was dropped */
+  fail_unless (GST_BUFFER_IS_DISCONT (buffer));
+  gst_buffer_unref (buffer);
+
+  gst_object_unref (srcpad);
+  gst_harness_teardown (h);
+
+  /* Test if the time limit works correctly with both leaky types */
+  h = gst_harness_new ("appsrc");
+  g_object_set (h->element,
+      "format", GST_FORMAT_TIME,
+      "max-bytes", G_GUINT64_CONSTANT (0),
+      "max-time", 2 * GST_SECOND,
+      "max-buffers", G_GUINT64_CONSTANT (0), "leaky-type", 1 /* upstream */ ,
+      NULL);
+  gst_harness_play (h);
+  srcpad = gst_element_get_static_pad (h->element, "src");
+
+  /* Pad probe to ensure that the source pad task is blocked and we can
+   * deterministically test the behaviour of the appsrc queue */
+  probe_id =
+      gst_pad_add_probe (srcpad,
+      GST_PAD_PROBE_TYPE_BUFFER | GST_PAD_PROBE_TYPE_BUFFER_LIST |
+      GST_PAD_PROBE_TYPE_BLOCKING, block_probe, NULL, NULL);
+
+  buffer = gst_buffer_new_and_alloc (100);
+  GST_BUFFER_PTS (buffer) = 0 * GST_SECOND;
+  GST_BUFFER_DURATION (buffer) = GST_SECOND;
+  gst_app_src_push_buffer (GST_APP_SRC (h->element), buffer);
+
+  /* wait until the appsrc is blocked downstream */
+  while (!gst_pad_is_blocking (srcpad))
+    g_thread_yield ();
+
+  buffer = gst_buffer_new_and_alloc (100);
+  GST_BUFFER_PTS (buffer) = 1 * GST_SECOND;
+  GST_BUFFER_DURATION (buffer) = GST_SECOND;
+  gst_app_src_push_buffer (GST_APP_SRC (h->element), buffer);
+  buffer = gst_buffer_new_and_alloc (100);
+  GST_BUFFER_PTS (buffer) = 2 * GST_SECOND;
+  GST_BUFFER_DURATION (buffer) = GST_SECOND;
+  gst_app_src_push_buffer (GST_APP_SRC (h->element), buffer);
+
+  /* The first buffer is not queued anymore but inside the pad probe */
+  g_object_get (h->element, "current-level-bytes", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 200);
+  g_object_get (h->element, "current-level-buffers", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 2);
+  g_object_get (h->element, "current-level-time", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 2 * GST_SECOND);
+
+  buffer = gst_buffer_new_and_alloc (100);
+  GST_BUFFER_PTS (buffer) = 4 * GST_SECOND;
+  GST_BUFFER_DURATION (buffer) = GST_SECOND;
+  gst_app_src_push_buffer (GST_APP_SRC (h->element), buffer);
+
+  /* The new buffer was dropped now, otherwise we would have more than 2 seconds queued */
+  g_object_get (h->element, "current-level-bytes", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 200);
+  g_object_get (h->element, "current-level-buffers", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 2);
+  g_object_get (h->element, "current-level-time", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 2 * GST_SECOND);
+
+  g_object_set (h->element, "leaky-type", 2 /* downstream */ , NULL);
+
+  buffer = gst_buffer_new_and_alloc (100);
+  GST_BUFFER_PTS (buffer) = 4 * GST_SECOND;
+  GST_BUFFER_DURATION (buffer) = GST_SECOND;
+  gst_app_src_push_buffer (GST_APP_SRC (h->element), buffer);
+
+  /* The oldest buffer was dropped now, otherwise we would have only 1 second queued */
+  g_object_get (h->element, "current-level-bytes", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 200);
+  g_object_get (h->element, "current-level-buffers", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 2);
+  /* 3s because the last dequeued buffer had an end timestamp of 0s, the
+   * buffer with timestamp 1s was dropped and the newly queued buffer has a
+   * start timestamp of 4s */
+  g_object_get (h->element, "current-level-time", &current_level, NULL);
+  fail_unless_equals_uint64 (current_level, 3 * GST_SECOND);
+
+  /* Remove probe and check if we get all buffers we're supposed to get */
+  gst_pad_remove_probe (srcpad, probe_id);
+
+  buffer = gst_harness_pull (h);
+  fail_unless (buffer);
+  fail_unless_equals_uint64 (GST_BUFFER_PTS (buffer), 0 * GST_SECOND);
+  gst_buffer_unref (buffer);
+
+  buffer = gst_harness_pull (h);
+  fail_unless (buffer);
+  fail_unless_equals_uint64 (GST_BUFFER_PTS (buffer), 2 * GST_SECOND);
+  /* DISCONT because the buffer with 1s was dropped */
+  fail_unless (GST_BUFFER_IS_DISCONT (buffer));
+  gst_buffer_unref (buffer);
+
+  buffer = gst_harness_pull (h);
+  fail_unless (buffer);
+  fail_unless_equals_uint64 (GST_BUFFER_PTS (buffer), 4 * GST_SECOND);
+  /* DISCONT because the first buffer with 4s was dropped */
+  fail_unless (GST_BUFFER_IS_DISCONT (buffer));
+  gst_buffer_unref (buffer);
+
+  gst_object_unref (srcpad);
+  gst_harness_teardown (h);
+}
+
+GST_END_TEST;
+
+static GstFlowReturn
+send_event_chain_func (GstPad * pad, GstObject * parent, GstBuffer * buf)
+{
+  GST_LOG ("  buffer # %3u", (guint) GST_BUFFER_OFFSET (buf));
+
+  fail_unless_equals_int (GST_BUFFER_OFFSET (buf), expect_offset);
+  ++expect_offset;
+  gst_buffer_unref (buf);
+
+  if (expect_offset == 2) {
+    /* test is done */
+    g_mutex_lock (&check_mutex);
+    done = TRUE;
+    g_cond_signal (&check_cond);
+    g_mutex_unlock (&check_mutex);
+  }
+
+  return GST_FLOW_OK;
+}
+
+static gboolean
+send_event_event_func (GstPad * pad, GstObject * parent, GstEvent * event)
+{
+  GST_LOG ("event %" GST_PTR_FORMAT, event);
+  if (GST_EVENT_TYPE (event) == GST_EVENT_CUSTOM_DOWNSTREAM) {
+    /* this event should arrive after the first buffer */
+    fail_unless_equals_int (expect_offset, 1);
+  }
+  gst_event_unref (event);
+  return TRUE;
+}
+
+/* check that custom downstream events are properly serialized with buffers */
+GST_START_TEST (test_appsrc_send_custom_event)
+{
+  GstElement *src;
+  GstBuffer *buf;
+
+  src = setup_appsrc ();
+
+  ASSERT_SET_STATE (src, GST_STATE_PLAYING, GST_STATE_CHANGE_SUCCESS);
+
+  expect_offset = 0;
+  gst_pad_set_chain_function (mysinkpad, send_event_chain_func);
+  gst_pad_set_event_function (mysinkpad, send_event_event_func);
+
+  /* send a buffer, a custom event and a second buffer */
+  buf = gst_buffer_new_and_alloc (1);
+  GST_BUFFER_OFFSET (buf) = 0;
+  fail_unless (gst_app_src_push_buffer (GST_APP_SRC_CAST (src),
+          buf) == GST_FLOW_OK);
+
+  gst_element_send_event (src,
+      gst_event_new_custom (GST_EVENT_CUSTOM_DOWNSTREAM,
+          gst_structure_new ("custom", NULL, NULL)));
+
+  buf = gst_buffer_new_and_alloc (2);
+  GST_BUFFER_OFFSET (buf) = 1;
+  fail_unless (gst_app_src_push_buffer (GST_APP_SRC_CAST (src),
+          buf) == GST_FLOW_OK);
+
+  g_mutex_lock (&check_mutex);
+  while (!done)
+    g_cond_wait (&check_cond, &check_mutex);
+  g_mutex_unlock (&check_mutex);
+
+  ASSERT_SET_STATE (src, GST_STATE_NULL, GST_STATE_CHANGE_SUCCESS);
+  cleanup_appsrc (src);
+}
+
+GST_END_TEST;
+
 static Suite *
 appsrc_suite (void)
 {
@@ -1034,6 +1454,8 @@ appsrc_suite (void)
   tcase_add_test (tc_chain, test_appsrc_push_buffer_list);
   tcase_add_test (tc_chain, test_appsrc_period_with_custom_segment);
   tcase_add_test (tc_chain, test_appsrc_custom_segment_twice);
+  tcase_add_test (tc_chain, test_appsrc_limits);
+  tcase_add_test (tc_chain, test_appsrc_send_custom_event);
 
   if (RUNNING_ON_VALGRIND)
     tcase_add_loop_test (tc_chain, test_appsrc_block_deadlock, 0, 5);

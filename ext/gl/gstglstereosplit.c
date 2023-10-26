@@ -36,6 +36,7 @@
 #include "config.h"
 #endif
 
+#include "gstglelements.h"
 #include "gstglstereosplit.h"
 
 #define GST_CAT_DEFAULT gst_gl_stereosplit_debug
@@ -47,6 +48,8 @@ GST_DEBUG_CATEGORY_STATIC (GST_CAT_DEFAULT);
 
 G_DEFINE_TYPE_WITH_CODE (GstGLStereoSplit, gst_gl_stereosplit,
     GST_TYPE_ELEMENT, DEBUG_INIT);
+GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (glstereosplit, "glstereosplit",
+    GST_RANK_NONE, GST_TYPE_GL_STEREOSPLIT, gl_element_init (plugin));
 
 static GstStaticPadTemplate sink_template = GST_STATIC_PAD_TEMPLATE ("sink",
     GST_PAD_SINK, GST_PAD_ALWAYS,
@@ -805,6 +808,7 @@ stereosplit_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
     case GST_QUERY_CAPS:
     {
       GstCaps *filter, *left, *right, *combined, *ret, *templ_caps;
+      gboolean result;
 
       gst_query_parse_caps (query, &filter);
 
@@ -853,11 +857,14 @@ stereosplit_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
           gst_caps_intersect_full (combined, templ_caps,
           GST_CAPS_INTERSECT_FIRST);
       gst_caps_unref (templ_caps);
+      gst_caps_unref (combined);
 
       GST_LOG_OBJECT (split, "Returning sink pad caps %" GST_PTR_FORMAT, ret);
 
       gst_query_set_caps_result (query, ret);
-      return !gst_caps_is_empty (ret);
+      result = !gst_caps_is_empty (ret);
+      gst_caps_unref (ret);
+      return result;
     }
     default:
       return gst_pad_query_default (pad, parent, query);

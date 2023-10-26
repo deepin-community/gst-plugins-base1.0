@@ -27,6 +27,22 @@
  * #GstGLContext wraps an OpenGL context object in a uniform API.  As a result
  * of the limitation on OpenGL context, this object is not thread safe unless
  * specified and must only be activated in a single thread.
+ *
+ * Environment variables:
+ * - `GST_GL_API`: select which OpenGL API to create and OpenGL context for.
+ *                 Depending on the platform, the available values are
+ *                 'opengl', 'opengl3' (core profile), and 'gles2'.  See the
+ *                 the #GstGLAPI enumeration for more details.
+ * - `GST_GL_PLATFORM`: select which OpenGL platform to create an OpenGL
+ *                      context with.  Depending on the platform and the
+ *                      dependencies available build-time, the available values
+ *                      are, 'glx', 'egl', 'cgl', 'wgl', and 'eagl'
+ * - `GST_GL_CONFIG`: select the configuration used for creating the OpenGL
+ *                    context and OpenGL surface.  Written out as a GstStructure
+ *                    that has been serialized to string.  e.g.
+ *                    `GST_GL_CONFIG="gst-gl-context-config,red-size=8,green-size=8,blue-size=8,alpha-size=8,depth-size=16"`.
+ *                    Not all platforms will support the same level of
+ *                    functionality.
  */
 
 #ifdef HAVE_CONFIG_H
@@ -93,6 +109,8 @@ load_opengl_module (gpointer user_data)
    * Proper compilers will optimize away the strcmp */
   if (g_strcmp0 (G_MODULE_SUFFIX, "so") == 0)
     module_opengl = g_module_open ("libGL.so.1", G_MODULE_BIND_LAZY);
+  else if (g_strcmp0 (G_MODULE_SUFFIX, "dll") == 0)
+    module_opengl = g_module_open ("opengl32.dll", G_MODULE_BIND_LAZY);
 
   /* This automatically handles the suffix and even .la files */
   if (!module_opengl)
@@ -215,6 +233,7 @@ struct _GstGLContextPrivate
   gint gl_minor;
 
   gchar *gl_exts;
+  GstStructure *requested_config;
 };
 
 typedef struct
@@ -235,16 +254,8 @@ typedef struct
 G_DEFINE_ABSTRACT_TYPE_WITH_PRIVATE (GstGLContext, gst_gl_context,
     GST_TYPE_OBJECT);
 
-#define GST_TYPE_GL_WRAPPED_CONTEXT (gst_gl_wrapped_context_get_type())
-static GType gst_gl_wrapped_context_get_type (void);
 G_DEFINE_TYPE (GstGLWrappedContext, gst_gl_wrapped_context,
     GST_TYPE_GL_CONTEXT);
-
-#define GST_GL_WRAPPED_CONTEXT(o)           (G_TYPE_CHECK_INSTANCE_CAST((o), GST_TYPE_GL_WRAPPED_CONTEXT, GstGLWrappedContext))
-#define GST_GL_WRAPPED_CONTEXT_CLASS(k)     (G_TYPE_CHECK_CLASS((k), GST_TYPE_GL_CONTEXT, GstGLContextClass))
-#define GST_IS_GL_WRAPPED_CONTEXT(o)        (G_TYPE_CHECK_INSTANCE_TYPE((o), GST_TYPE_GL_WRAPPED_CONTEXT))
-#define GST_IS_GL_WRAPPED_CONTEXT_CLASS(k)  (G_TYPE_CHECK_CLASS_TYPE((k), GST_TYPE_GL_WRAPPED_CONTEXT))
-#define GST_GL_WRAPPED_CONTEXT_GET_CLASS(o) (G_TYPE_INSTANCE_GET_CLASS((o), GST_TYPE_GL_WRAPPED_CONTEXT, GstGLWrappedContextClass))
 
 /**
  * gst_gl_context_error_quark:
@@ -344,10 +355,6 @@ gst_gl_context_new (GstGLDisplay * display)
   if (!context && (!user_choice || g_strstr_len (user_choice, 3, "glx")))
     context = GST_GL_CONTEXT (gst_gl_context_glx_new (display));
 #endif
-#if GST_GL_HAVE_PLATFORM_EGL
-  if (!context && (!user_choice || g_strstr_len (user_choice, 3, "egl")))
-    context = GST_GL_CONTEXT (gst_gl_context_egl_new (display));
-#endif
 #if GST_GL_HAVE_PLATFORM_WGL
   if (!context && (!user_choice || g_strstr_len (user_choice, 3, "wgl")))
     context = GST_GL_CONTEXT (gst_gl_context_wgl_new (display));
@@ -355,6 +362,10 @@ gst_gl_context_new (GstGLDisplay * display)
 #if GST_GL_HAVE_PLATFORM_EAGL
   if (!context && (!user_choice || g_strstr_len (user_choice, 4, "eagl")))
     context = GST_GL_CONTEXT (gst_gl_context_eagl_new (display));
+#endif
+#if GST_GL_HAVE_PLATFORM_EGL
+  if (!context && (!user_choice || g_strstr_len (user_choice, 3, "egl")))
+    context = GST_GL_CONTEXT (gst_gl_context_egl_new (display));
 #endif
 
   if (!context) {
@@ -391,7 +402,7 @@ gst_gl_context_new (GstGLDisplay * display)
  *
  * @available_apis must not be %GST_GL_API_NONE or %GST_GL_API_ANY
  *
- * Returns: (transfer full): a #GstGLContext wrapping @handle
+ * Returns: (transfer full) (nullable): a #GstGLContext wrapping @handle
  *
  * Since: 1.4
  */
@@ -419,13 +430,6 @@ gst_gl_context_new_wrapped (GstGLDisplay * display, guintptr handle,
 
   context_wrap = g_object_new (GST_TYPE_GL_WRAPPED_CONTEXT, NULL);
   gst_object_ref_sink (context_wrap);
-
-  if (!context_wrap) {
-    /* subclass returned a NULL context */
-    GST_ERROR ("Could not wrap existing context");
-
-    return NULL;
-  }
 
   context = (GstGLContext *) context_wrap;
 
@@ -483,7 +487,7 @@ gst_gl_context_new_wrapped (GstGLDisplay * display, guintptr handle,
  * gst_gl_context_get_current_gl_context:
  * @context_type: a #GstGLPlatform specifying the type of context to retrieve
  *
- * Returns: The OpenGL context handle current in the calling thread or %NULL
+ * Returns: (nullable): The OpenGL context handle current in the calling thread or %NULL
  *
  * Since: 1.6
  */
@@ -532,7 +536,7 @@ gst_gl_context_get_current_gl_context (GstGLPlatform context_type)
  *
  * See also gst_gl_context_get_proc_address().
  *
- * Returns: a function pointer for @name, or %NULL
+ * Returns: (nullable): a function pointer for @name, or %NULL
  *
  * Since: 1.6
  */
@@ -727,6 +731,10 @@ gst_gl_context_finalize (GObject * object)
     context->gl_vtable = NULL;
   }
 
+  if (context->priv->requested_config)
+    gst_structure_free (context->priv->requested_config);
+  context->priv->requested_config = NULL;
+
   g_mutex_clear (&context->priv->render_lock);
 
   g_cond_clear (&context->priv->create_cond);
@@ -792,7 +800,7 @@ gst_gl_context_activate (GstGLContext * context, gboolean activate)
  * gst_gl_context_get_thread:
  * @context: a #GstGLContext
  *
- * Returns: (transfer full): The #GThread, @context is current in or NULL
+ * Returns: (transfer full) (nullable): The #GThread, @context is current in or NULL
  *
  * Since: 1.6
  */
@@ -862,7 +870,7 @@ gst_gl_context_get_gl_api (GstGLContext * context)
  * void (GSTGLAPI *PFN_glGetIntegerv) (GLenum name, GLint * ret)
  * ]|
  *
- * Returns: a function pointer or %NULL
+ * Returns: (nullable): a function pointer or %NULL
  *
  * Since: 1.4
  */
@@ -893,7 +901,7 @@ gst_gl_context_get_proc_address (GstGLContext * context, const gchar * name)
  *
  * See also: gst_gl_context_get_proc_address()
  *
- * Returns: an address pointing to @name or %NULL
+ * Returns: (nullable): an address pointing to @name or %NULL
  *
  * Since: 1.4
  */
@@ -1011,15 +1019,26 @@ gst_gl_context_can_share (GstGLContext * context, GstGLContext * other_context)
 /**
  * gst_gl_context_create:
  * @context: a #GstGLContext:
- * @other_context: (allow-none): a #GstGLContext to share OpenGL objects with
- * @error: (allow-none): a #GError
+ * @other_context: (nullable): a #GstGLContext to share OpenGL objects with
+ * @error: a #GError
  *
  * Creates an OpenGL context with the specified @other_context as a context
  * to share shareable OpenGL objects with.  See the OpenGL specification for
  * what is shared between OpenGL contexts.
  *
- * If an error occurs, and @error is not %NULL, then error will contain details
- * of the error and %FALSE will be returned.
+ * Since 1.20, the configuration can be overriden with the environment variable
+ * `GST_GL_CONFIG` which is a stringified #GstStructure as would be returned
+ * from gst_gl_context_get_config().  If `GST_GL_CONFIG` is not set, then the
+ * config will be chosen from @other_context by calling
+ * gst_gl_context_get_config() on @other_context.  Otherwise, a default
+ * configuration is used.
+ *
+ * Calling gst_gl_context_request_config()) before calling
+ * gst_gl_context_create() will override the config from @other_context but
+ * will not override the `GST_GL_CONFIG` environment variable.
+ *
+ * If an error occurs, and @error is not %NULL, then @error will contain
+ * details of the error and %FALSE will be returned.
  *
  * Should only be called once.
  *
@@ -1175,8 +1194,19 @@ _build_extension_string (GstGLContext * context)
   return ext_g_str;
 }
 
-//gboolean
-//gst_gl_context_create (GstGLContext * context, GstGLContext * other_context, GError ** error)
+typedef struct
+{
+  GError **error;
+  gboolean ret;
+} FillInfoCtx;
+
+static void
+fill_info (GstGLContext * context, gpointer data)
+{
+  FillInfoCtx *ctx = data;
+  ctx->ret = gst_gl_context_fill_info (context, ctx->error);
+}
+
 static gpointer
 gst_gl_context_create_thread (GstGLContext * context)
 {
@@ -1190,6 +1220,7 @@ gst_gl_context_create_thread (GstGLContext * context)
   const gchar *user_choice;
   GError **error;
   GstGLContext *other_context;
+  GstStructure *config;
 
   g_mutex_lock (&context->priv->render_lock);
 
@@ -1237,6 +1268,44 @@ gst_gl_context_create_thread (GstGLContext * context)
     goto failure;
   }
 
+  {
+    const gchar *config_str = g_getenv ("GST_GL_CONFIG");
+    if (config_str) {
+      GstStructure *config = gst_structure_from_string (config_str, NULL);
+      if (!config) {
+        g_set_error (error, GST_GL_CONTEXT_ERROR,
+            GST_GL_CONTEXT_ERROR_WRONG_CONFIG,
+            "could not construct OpenGL config from the \'GST_GL_CONFIG\' "
+            "environment variable");
+        g_free (compiled_api_s);
+        g_free (user_api_s);
+        g_free (display_api_s);
+        goto failure;
+      }
+      if (!gst_gl_context_request_config (context, gst_structure_copy (config))) {
+        GST_WARNING_OBJECT (context,
+            "failed to request config %" GST_PTR_FORMAT, config);
+      } else {
+        GST_INFO_OBJECT (context, "requesting config from environment %"
+            GST_PTR_FORMAT, config);
+      }
+      gst_structure_free (config);
+    } else if (other_context && !context->priv->requested_config) {
+      GstStructure *config = gst_gl_context_get_config (other_context);
+      if (config) {
+        if (!gst_gl_context_request_config (context,
+                gst_structure_copy (config))) {
+          GST_WARNING_OBJECT (context,
+              "failed to request config %" GST_PTR_FORMAT, config);
+        } else {
+          GST_INFO_OBJECT (context, "requesting config from other context %"
+              GST_PTR_FORMAT " %" GST_PTR_FORMAT, other_context, config);
+        }
+        gst_structure_free (config);
+      }
+    }
+  }
+
   if (context_class->choose_format &&
       !context_class->choose_format (context, error)) {
     GST_WARNING_OBJECT (context, "Failed to choose format");
@@ -1279,6 +1348,11 @@ gst_gl_context_create_thread (GstGLContext * context)
   api_string = gst_gl_api_to_string (gl_api);
   GST_INFO_OBJECT (context, "available GL APIs: %s", api_string);
 
+  if ((config = gst_gl_context_get_config (context))) {
+    GST_DEBUG_OBJECT (context, "Chosen config %" GST_PTR_FORMAT, config);
+    gst_structure_free (config);
+  }
+
   if (((compiled_api & gl_api & display_api) & user_api) == GST_GL_API_NONE) {
     g_set_error (error, GST_GL_CONTEXT_ERROR, GST_GL_CONTEXT_ERROR_WRONG_API,
         "failed to create context, context "
@@ -1297,9 +1371,14 @@ gst_gl_context_create_thread (GstGLContext * context)
   g_free (display_api_s);
 
   GST_DEBUG_OBJECT (context, "Filling info");
-  if (!gst_gl_context_fill_info (context, error)) {
-    g_assert (error == NULL || *error != NULL);
-    goto failure;
+  {
+    FillInfoCtx ctx = { 0 };
+    ctx.error = error;
+    gst_gl_context_thread_add (context, fill_info, &ctx);
+    if (!ctx.ret) {
+      g_assert (error == NULL || *error != NULL);
+      goto failure;
+    }
   }
 
   context->priv->alive = TRUE;
@@ -1460,16 +1539,20 @@ gst_gl_context_fill_info (GstGLContext * context, GError ** error)
     goto failure;
   }
 
-  /* Does not implement OES_vertex_array_object properly, see
-   * https://bugzilla.gnome.org/show_bug.cgi?id=750185 */
-  if (g_strcmp0 ((const gchar *) gl->GetString (GL_VENDOR),
-          "Imagination Technologies") == 0
-      && g_strcmp0 ((const gchar *) gl->GetString (GL_RENDERER),
-          "PowerVR SGX 544MP") == 0) {
-    gl->GenVertexArrays = NULL;
-    gl->DeleteVertexArrays = NULL;
-    gl->BindVertexArray = NULL;
-    gl->IsVertexArray = NULL;
+  gst_gl_context_apply_quirks (context);
+
+  if (GST_IS_GL_WRAPPED_CONTEXT (context)) {
+    /* XXX: vfunc? */
+#if GST_GL_HAVE_PLATFORM_GLX
+    if (gst_gl_context_get_gl_platform (context) == GST_GL_PLATFORM_GLX
+        && !gst_gl_context_glx_fill_info (context, error))
+      goto failure;
+#endif
+#if GST_GL_HAVE_PLATFORM_EGL
+    if (gst_gl_context_get_gl_platform (context) == GST_GL_PLATFORM_EGL
+        && !gst_gl_context_egl_fill_info (context, error))
+      goto failure;
+#endif
   }
 
   return TRUE;
@@ -1696,7 +1779,7 @@ gst_gl_context_check_feature (GstGLContext * context, const gchar * feature)
  *
  * See also gst_gl_context_activate().
  *
- * Returns: (transfer none): the #GstGLContext active in the current thread or %NULL
+ * Returns: (transfer none) (nullable): the #GstGLContext active in the current thread or %NULL
  *
  * Since: 1.6
  */
@@ -1807,6 +1890,85 @@ gst_gl_context_swap_buffers (GstGLContext * context)
   context_class->swap_buffers (context);
 }
 
+/**
+ * gst_gl_context_get_config:
+ * @context: the #GstGLContext
+ *
+ * Retrieve the OpenGL configuration for this context.  The context must
+ * have been successfully created for this function to return a valid value.
+ *
+ * Not all implementations currently support retrieving the config and will
+ * return %NULL when not supported.
+ *
+ * Returns: (transfer full) (nullable): the configuration chosen for this OpenGL context.
+ *
+ * Since: 1.20
+ */
+GstStructure *
+gst_gl_context_get_config (GstGLContext * context)
+{
+  GstGLContextClass *context_class;
+
+  g_return_val_if_fail (GST_IS_GL_CONTEXT (context), NULL);
+  context_class = GST_GL_CONTEXT_GET_CLASS (context);
+  if (!context_class->get_config) {
+    GST_FIXME_OBJECT (context, "does not support retrieving a config");
+    return NULL;
+  }
+
+  return context_class->get_config (context);
+}
+
+/**
+ * gst_gl_context_request_config:
+ * @context: the #GstGLContext
+ * @gl_config: (nullable) (transfer full): a configuration structure for
+ *             configuring the OpenGL context
+ *
+ * Set the OpenGL configuration for this context.  The context must not
+ * have been created for this function to succeed.  Setting a %NULL
+ * @config has the affect of removing any specific configuration request.
+ *
+ * Not all implementations currently support retrieving the config and this
+ * function will return FALSE when not supported.
+ *
+ * Note that calling this function may cause a subsequent
+ * gst_gl_context_create() to fail if @config could not be matched with
+ * the platform-specific configuration.
+ *
+ * Note that the actual config used may be differ from the requested values.
+ *
+ * Returns: whether @gl_config could be successfully set on @context
+ *
+ * Since: 1.20
+ */
+gboolean
+gst_gl_context_request_config (GstGLContext * context, GstStructure * gl_config)
+{
+  GstGLContextClass *context_class;
+  gboolean ret;
+
+  g_return_val_if_fail (GST_IS_GL_CONTEXT (context), FALSE);
+  g_return_val_if_fail (context->priv->created == FALSE, FALSE);
+  context_class = GST_GL_CONTEXT_GET_CLASS (context);
+  if (!context_class->request_config) {
+    gst_structure_free (gl_config);
+    GST_FIXME_OBJECT (context, "does not support requesting a config");
+    return FALSE;
+  }
+
+  ret = context_class->request_config (context, gst_structure_copy (gl_config));
+  if (ret) {
+    if (context->priv->requested_config)
+      gst_structure_free (context->priv->requested_config);
+    context->priv->requested_config = gl_config;
+  } else {
+    gst_structure_free (gl_config);
+  }
+
+  return ret;
+}
+
 static GstGLAPI
 gst_gl_wrapped_context_get_gl_api (GstGLContext * context)
 {
@@ -1850,6 +2012,37 @@ gst_gl_wrapped_context_activate (GstGLContext * context, gboolean activate)
   return TRUE;
 }
 
+static gpointer
+_structure_copy_if_set (gpointer data, gpointer user_data)
+{
+  GstStructure *ret = NULL;
+
+  if (data)
+    ret = gst_structure_copy (data);
+  return ret;
+}
+
+static GstStructure *
+gst_gl_wrapped_context_get_config (GstGLContext * context)
+{
+  GstStructure *ret;
+
+  ret = g_object_dup_data (G_OBJECT (context),
+      GST_GL_CONTEXT_WRAPPED_GL_CONFIG_NAME,
+      (GDuplicateFunc) _structure_copy_if_set, NULL);
+  if (ret) {
+    GST_DEBUG_OBJECT (context, "wrapped context found config %" GST_PTR_FORMAT,
+        ret);
+    return ret;
+  } else {
+    GST_FIXME_OBJECT (context, "wrapped context could not retrieve config. "
+        "The application may be missing a call to gst_gl_context_fill_info() "
+        "or the specific platform implemention is not implemented for "
+        "retrieving the config from a wrapped OpenGL context.");
+    return NULL;
+  }
+}
+
 static void
 gst_gl_wrapped_context_class_init (GstGLWrappedContextClass * klass)
 {
@@ -1862,6 +2055,8 @@ gst_gl_wrapped_context_class_init (GstGLWrappedContextClass * klass)
   context_class->get_gl_platform =
       GST_DEBUG_FUNCPTR (gst_gl_wrapped_context_get_gl_platform);
   context_class->activate = GST_DEBUG_FUNCPTR (gst_gl_wrapped_context_activate);
+  context_class->get_config =
+      GST_DEBUG_FUNCPTR (gst_gl_wrapped_context_get_config);
 }
 
 static void
