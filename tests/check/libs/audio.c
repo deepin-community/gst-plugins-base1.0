@@ -647,8 +647,7 @@ GST_START_TEST (test_buffer_clip_samples_start_and_stop_no_meta)
   fail_unless_equals_int64 (GST_BUFFER_TIMESTAMP (ret), 4 * GST_SECOND);
   fail_unless_equals_int64 (GST_BUFFER_DURATION (ret), GST_CLOCK_TIME_NONE);
   fail_unless_equals_int64 (GST_BUFFER_OFFSET (ret), 400);
-  fail_unless_equals_int64 (GST_BUFFER_OFFSET_END (ret),
-      GST_BUFFER_OFFSET_NONE);
+  fail_unless_equals_int64 (GST_BUFFER_OFFSET_END (ret), 800);
   gst_buffer_map (ret, &map, GST_MAP_READ);
   fail_unless (map.data == data + 200);
   fail_unless (map.size == 400);
@@ -664,7 +663,7 @@ GST_START_TEST (test_buffer_clip_samples_no_timestamp)
   GstSegment s;
   GstBuffer *buf;
 
-  /* If the buffer has no offset it should assert()
+  /* If the buffer has no offset it should assert() in DEFAULT format
    * FIXME: check if return value is the same as the input buffer.
    *        probably can't be done because the assert() does a SIGABRT.
    */
@@ -679,6 +678,57 @@ GST_START_TEST (test_buffer_clip_samples_no_timestamp)
   ASSERT_CRITICAL (gst_audio_buffer_clip (buf, &s, 100, 1));
 
   gst_buffer_unref (buf);
+}
+
+GST_END_TEST;
+
+GST_START_TEST (test_buffer_truncate_samples_offset_end)
+{
+  GstBuffer *buf;
+  GstBuffer *ret;
+  guint8 *data;
+
+  buf = make_buffer (&data);
+  GST_BUFFER_TIMESTAMP (buf) = 2 * GST_SECOND;
+  GST_BUFFER_DURATION (buf) = 10 * GST_SECOND;
+  GST_BUFFER_OFFSET (buf) = 200;
+  GST_BUFFER_OFFSET_END (buf) = 1200;
+
+  ret = gst_audio_buffer_truncate (buf, 4, 100, 100);
+  fail_unless (ret != NULL);
+
+  fail_unless_equals_int64 (GST_BUFFER_TIMESTAMP (ret), GST_CLOCK_TIME_NONE);
+  fail_unless_equals_int64 (GST_BUFFER_DURATION (ret), GST_CLOCK_TIME_NONE);
+  fail_unless_equals_int64 (GST_BUFFER_OFFSET (ret), 300);
+  fail_unless_equals_int64 (GST_BUFFER_OFFSET_END (ret), 400);
+
+  gst_buffer_unref (ret);
+}
+
+GST_END_TEST;
+
+GST_START_TEST (test_buffer_truncate_samples_no_timestamp)
+{
+  GstBuffer *buf;
+  GstBuffer *ret;
+  guint8 *data;
+
+  buf = make_buffer (&data);
+  GST_BUFFER_TIMESTAMP (buf) = GST_CLOCK_TIME_NONE;
+  GST_BUFFER_DURATION (buf) = GST_CLOCK_TIME_NONE;
+  GST_BUFFER_OFFSET (buf) = GST_BUFFER_OFFSET_NONE;
+  GST_BUFFER_OFFSET_END (buf) = GST_BUFFER_OFFSET_NONE;
+
+  ret = gst_audio_buffer_truncate (buf, 4, 100, 1);
+  fail_unless (ret != NULL);
+
+  fail_unless_equals_int64 (GST_BUFFER_TIMESTAMP (ret), GST_CLOCK_TIME_NONE);
+  fail_unless_equals_int64 (GST_BUFFER_DURATION (ret), GST_CLOCK_TIME_NONE);
+  fail_unless_equals_int64 (GST_BUFFER_OFFSET (ret), GST_BUFFER_OFFSET_NONE);
+  fail_unless_equals_int64 (GST_BUFFER_OFFSET_END (ret),
+      GST_BUFFER_OFFSET_NONE);
+
+  gst_buffer_unref (ret);
 }
 
 GST_END_TEST;
@@ -926,7 +976,7 @@ GST_START_TEST (test_fill_silence)
   for (f = GST_AUDIO_FORMAT_S8; f < GST_AUDIO_FORMAT_F64; f++) {
     gst_audio_info_set_format (&info, f, 48000, 1, NULL);
 
-    gst_audio_format_fill_silence (info.finfo, test_silence,
+    gst_audio_format_info_fill_silence (info.finfo, test_silence,
         GST_AUDIO_INFO_BPF (&info) * 4);
 
     for (i = 0; i < 4; i++)
@@ -1554,6 +1604,8 @@ audio_suite (void)
   tcase_add_test (tc_chain, test_buffer_clip_samples_outside);
   tcase_add_test (tc_chain, test_buffer_clip_samples_start_and_stop_no_meta);
   tcase_add_test (tc_chain, test_buffer_clip_samples_no_timestamp);
+  tcase_add_test (tc_chain, test_buffer_truncate_samples_offset_end);
+  tcase_add_test (tc_chain, test_buffer_truncate_samples_no_timestamp);
   tcase_add_test (tc_chain, test_multichannel_checks);
   tcase_add_test (tc_chain, test_multichannel_reorder);
   tcase_add_test (tc_chain, test_audio_format_s8);

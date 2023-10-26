@@ -26,6 +26,7 @@
 #include <gst/video/navigation.h>
 #include <gst/controller/gstproxycontrolbinding.h>
 
+#include "gstglelements.h"
 #include "gstglsinkbin.h"
 
 GST_DEBUG_CATEGORY (gst_debug_gl_sink_bin);
@@ -105,6 +106,8 @@ G_DEFINE_TYPE_WITH_CODE (GstGLSinkBin, gst_gl_sink_bin,
         gst_gl_sink_bin_color_balance_init)
     GST_DEBUG_CATEGORY_INIT (gst_debug_gl_sink_bin, "glimagesink", 0,
         "OpenGL Video Sink Bin"));
+GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (glsinkbin, "glsinkbin",
+    GST_RANK_NONE, GST_TYPE_GL_SINK_BIN, gl_element_init (plugin));
 
 static void
 gst_gl_sink_bin_class_init (GstGLSinkBinClass * klass)
@@ -444,20 +447,17 @@ gst_gl_sink_bin_change_state (GstElement * element, GstStateChange transition)
 }
 
 static void
-gst_gl_sink_bin_navigation_send_event (GstNavigation * navigation, GstStructure
-    * structure)
+gst_gl_sink_bin_navigation_send_event (GstNavigation * navigation,
+    GstEvent * event)
 {
   GstGLSinkBin *self = GST_GL_SINK_BIN (navigation);
   GstElement *nav =
       gst_bin_get_by_interface (GST_BIN (self), GST_TYPE_NAVIGATION);
 
   if (nav) {
-    gst_navigation_send_event (GST_NAVIGATION (nav), structure);
-    structure = NULL;
+    gst_navigation_send_event_simple (GST_NAVIGATION (nav), event);
     gst_object_unref (nav);
   } else {
-    GstEvent *event = gst_event_new_navigation (structure);
-    structure = NULL;
     gst_element_send_event (GST_ELEMENT (self), event);
   }
 }
@@ -467,7 +467,7 @@ gst_gl_sink_bin_navigation_interface_init (gpointer g_iface,
     gpointer g_iface_data)
 {
   GstNavigationInterface *iface = (GstNavigationInterface *) g_iface;
-  iface->send_event = gst_gl_sink_bin_navigation_send_event;
+  iface->send_event_simple = gst_gl_sink_bin_navigation_send_event;
 }
 
 static void

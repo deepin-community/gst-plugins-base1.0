@@ -8,8 +8,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: gst-plugins-base 1.2.1\n"
-"Report-Msgid-Bugs-To: http://bugzilla.gnome.org/\n"
-"POT-Creation-Date: 2019-02-26 11:43+0000\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2023-02-22 11:52+0000\n"
 "PO-Revision-Date: 2014-04-20 16:15+0300\n"
 "Last-Translator: Rihards Prieditis <rprieditis@gmail.com>\n"
 "Language-Team: Latvian <translation-team-lv@lists.sourceforge.net>\n"
@@ -17,6 +17,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"X-Bugs: Report translation errors to the Language-Team address.\n"
 "X-Poedit-Language: Latvian\n"
 "X-Poedit-Country: LATVIA\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n != 0 ? 1 : "
@@ -78,30 +79,17 @@ msgstr "Nevarēja meklēt pa CD."
 msgid "Could not read CD."
 msgstr "Nevarēja nolasīt CD."
 
-msgid "failed to draw pattern"
-msgstr ""
-
-msgid "A GL error occurred"
-msgstr ""
-
-msgid "format wasn't negotiated before get function"
-msgstr ""
-
-#, c-format
-msgid "Missing element '%s' - check your GStreamer installation."
-msgstr "Trūkst elements “%s” - pārbaudiet savu GStreamer instalāciju."
-
 msgid "Could not determine type of stream"
 msgstr "Nevarēja noteikt straumes tipu"
 
 msgid "This appears to be a text file"
 msgstr "Tiek atpazīts kā teksta datne"
 
-msgid "Could not create \"uridecodebin\" element."
-msgstr "Nevarēja izveidot “uridecodebin” elementu."
+#, c-format
+msgid "Missing element '%s' - check your GStreamer installation."
+msgstr "Trūkst elements “%s” - pārbaudiet savu GStreamer instalāciju."
 
-#, fuzzy
-msgid "Could not create \"uridecodebin3\" element."
+msgid "Could not create \"uridecodebin\" element."
 msgstr "Nevarēja izveidot “uridecodebin” elementu."
 
 #, c-format
@@ -167,7 +155,15 @@ msgstr "Šo plūsmu pagaidām nevar atskaņot."
 msgid "No URI handler implemented for \"%s\"."
 msgstr "Nav izstrādāts neviens “%s” URI apstrādātājs."
 
+#, fuzzy
+msgid "Source element can't be prepared"
+msgstr "Avota elements ir nederīgs."
+
 msgid "Source element is invalid."
+msgstr "Avota elements ir nederīgs."
+
+#, fuzzy
+msgid "Source element has no pads."
 msgstr "Avota elements ir nederīgs."
 
 #, c-format
@@ -179,6 +175,15 @@ msgstr "Nevar ierakstīt audio pietiekami ātri"
 
 msgid "This CD has no audio tracks"
 msgstr "Šajā CD nav neviena audio celiņa"
+
+msgid "failed to draw pattern"
+msgstr ""
+
+msgid "A GL error occurred"
+msgstr ""
+
+msgid "format wasn't negotiated before get function"
+msgstr ""
 
 msgid "ID3 tag"
 msgstr "ID3 iezīme"
@@ -213,9 +218,11 @@ msgstr "Bezzudumu MSZH"
 msgid "Run-length encoding"
 msgstr "Secīgo atkārtojumu kodēšana"
 
+#. subtitle formats with static descriptions
 msgid "Timed Text"
 msgstr "Teksts laikā"
 
+#. FIXME: add variant field to typefinder?
 msgid "Subtitle"
 msgstr "Subtitri"
 
@@ -296,6 +303,9 @@ msgstr "Reālā laika straumēšanas protokola (RTSP) avots"
 msgid "Microsoft Media Server (MMS) protocol source"
 msgstr "Microsoft mediju servera (MMS) protokola avots"
 
+#. TODO: find out how to add a comment for translators to the source code
+#. * (and tell them to make the first letter uppercase below if they move
+#. * the protocol to the middle or end of the string)
 #, c-format
 msgid "%s protocol source"
 msgstr "%s protokola avots"
@@ -359,6 +369,8 @@ msgstr "Nezināms atkodētāja elements"
 msgid "Unknown encoder element"
 msgstr "Nezināms kodētāja elements"
 
+#. we should really never get here, but we better still return
+#. * something if we do
 msgid "Plugin or element of unknown type"
 msgstr "Nezināma veida spraudnis vai elements"
 
@@ -389,11 +401,32 @@ msgstr "albuma izpildītāja ID"
 msgid "MusicBrainz album artist ID"
 msgstr "MusicBrainz albuma izpildītāja ID"
 
+msgid "release group ID"
+msgstr ""
+
+#, fuzzy
+msgid "MusicBrainz release group ID"
+msgstr "MusicBrainz celiņa ID"
+
+#, fuzzy
+msgid "release track ID"
+msgstr "celiņa ID"
+
+#, fuzzy
+msgid "MusicBrainz release track ID"
+msgstr "MusicBrainz celiņa ID"
+
 msgid "track TRM ID"
 msgstr "celiņa TRM ID"
 
 msgid "MusicBrainz TRM ID"
 msgstr "MusicBrainz TRM ID"
+
+msgid "AcoustID ID"
+msgstr ""
+
+msgid "AcoustID fingerprint (chromaprint)"
+msgstr ""
 
 msgid "capturing shutter speed"
 msgstr "tveršanas slēdža ātrums"
@@ -545,8 +578,17 @@ msgid ""
 "added/removed."
 msgstr ""
 
+msgid "Include devices from hidden device providers."
+msgstr ""
+
 #, c-format
 msgid "Volume: %.0f%%"
+msgstr ""
+
+msgid "Mute: on"
+msgstr ""
+
+msgid "Mute: off"
 msgstr ""
 
 msgid "Buffering..."
@@ -613,6 +655,9 @@ msgstr ""
 msgid "volume down"
 msgstr ""
 
+msgid "toggle audio mute on/off"
+msgstr ""
+
 msgid "increase playback rate"
 msgstr ""
 
@@ -625,16 +670,14 @@ msgstr ""
 msgid "enable/disable trick modes"
 msgstr ""
 
-#, fuzzy
-msgid "change audio track"
-msgstr "Šajā CD nav neviena audio celiņa"
-
-msgid "change video track"
+msgid "change to previous/next audio track"
 msgstr ""
 
-#, fuzzy
-msgid "change subtitle track"
-msgstr "Kate subtitru formāts"
+msgid "change to previous/next video track"
+msgstr ""
+
+msgid "change to previous/next subtitle track"
+msgstr ""
 
 msgid "seek to beginning"
 msgstr ""
@@ -643,6 +686,10 @@ msgid "show keyboard shortcuts"
 msgstr ""
 
 msgid "Interactive mode - keyboard controls:"
+msgstr ""
+
+#, c-format
+msgid "Use Windows high-resolution clock, precision: %u ms\n"
 msgstr ""
 
 msgid "Output status information and property notifications"
@@ -660,6 +707,9 @@ msgstr "Izmantojamais audio uztvērējs (pēc noklusējuma autoaudiosink)"
 msgid "Enable gapless playback"
 msgstr "Aktivēt atskaņošanu bez pauzēm"
 
+msgid "Enable instantaneous uri changes (only with playbin3)"
+msgstr ""
+
 msgid "Shuffle playlist"
 msgstr ""
 
@@ -669,16 +719,32 @@ msgstr ""
 msgid "Volume"
 msgstr ""
 
+msgid "Start position in seconds."
+msgstr ""
+
+msgid "Enable accurate seeking"
+msgstr ""
+
 msgid "Playlist file containing input media files"
+msgstr ""
+
+msgid "Use the experimental instant-rate-change flag when changing rate"
 msgstr ""
 
 msgid "Do not print any output (apart from errors)"
 msgstr ""
 
-msgid "Use playbin3 pipeline"
+msgid ""
+"Use playbin3 pipeline (default varies depending on 'USE_PLAYBIN' env "
+"variable)"
 msgstr ""
 
-msgid "(default varies depending on 'USE_PLAYBIN' env variable)"
+msgid ""
+"Keep showing the last frame on EOS until quit or playlist change command "
+"(gapless is ignored)"
+msgstr ""
+
+msgid "Do not print current position of pipeline"
 msgstr ""
 
 #, c-format
@@ -691,17 +757,10 @@ msgstr "Jums jānorāda vismaz viens datnes nosaukums vai atskaņojamais URI."
 msgid "Press 'k' to see a list of keyboard shortcuts.\n"
 msgstr ""
 
-#, fuzzy
-#~ msgid "Could not create \"decodebin3\" element."
-#~ msgstr "Nav iespējams izveidot \"decodebin2\" elementu."
-
-#, fuzzy
-#~ msgid "Could not create \"urisourcebin\" element."
-#~ msgstr "Nevarēja izveidot “uridecodebin” elementu."
-
 #~ msgid "Internal data stream error."
 #~ msgstr "Iekšējās datu plūsmas kļūda."
 
+#, c-format
 #~ msgid "A %s plugin is required to play this stream, but not installed."
 #~ msgstr ""
 #~ "Nepieciešamas %s spraudnis, lai atskaņotu šo plūsmu, bet tas nav "
@@ -838,6 +897,9 @@ msgstr ""
 
 #~ msgid "Could not open device \"%s\" for reading and writing."
 #~ msgstr "Nevarēja atvērt ierīci \"%s\" lasīšanai vai rakstīšanai."
+
+#~ msgid "Could not create \"decodebin2\" element."
+#~ msgstr "Nav iespējams izveidot \"decodebin2\" elementu."
 
 #~ msgid "Could not create \"queue2\" element."
 #~ msgstr "Nav iespējams izveidot  \"queue2\" elementu."

@@ -62,9 +62,9 @@ GType gst_gl_memory_allocator_get_type(void);
  * List of video formats that are supported by #GstGLMemory
  */
 #define GST_GL_MEMORY_VIDEO_FORMATS_STR \
-    "{ RGBA, BGRA, RGBx, BGRx, ARGB, ABGR, xRGB, xBGR, RGB, BGR, RGB16, BGR16, " \
+    "{ RGBA, BGRA, RGBx, BGRx, ARGB, ABGR, xRGB, xBGR, GBRA, GBR, RGBP, BGRP, RGB, BGR, RGB16, BGR16, " \
     "AYUV, VUYA, Y410, I420, YV12, NV12, NV21, NV16, NV61, YUY2, UYVY, Y210, Y41B, " \
-    "Y42B, Y444, GRAY8, GRAY16_LE, GRAY16_BE, ARGB64" \
+    "Y42B, Y444, GRAY8, GRAY16_LE, GRAY16_BE, ARGB64, A420, AV12, NV12_16L32S, NV12_4L4" \
     GST_GL_MEMORY_VIDEO_EXT_FORMATS "}"
 
 /**
@@ -145,10 +145,10 @@ gboolean        gst_gl_video_allocation_params_init_full        (GstGLVideoAlloc
                                                                  GstGLAllocationParamsCopyFunc copy,
                                                                  GstGLAllocationParamsFreeFunc free,
                                                                  GstGLContext * context,
-                                                                 GstAllocationParams * alloc_params,
-                                                                 GstVideoInfo * v_info,
+                                                                 const GstAllocationParams * alloc_params,
+                                                                 const GstVideoInfo * v_info,
                                                                  guint plane,
-                                                                 GstVideoAlignment * valign,
+                                                                 const GstVideoAlignment * valign,
                                                                  GstGLTextureTarget target,
                                                                  GstGLFormat tex_format,
                                                                  gpointer wrapped_data,
@@ -157,18 +157,18 @@ gboolean        gst_gl_video_allocation_params_init_full        (GstGLVideoAlloc
                                                                  GDestroyNotify notify);
 GST_GL_API
 GstGLVideoAllocationParams * gst_gl_video_allocation_params_new (GstGLContext * context,
-                                                                 GstAllocationParams * alloc_params,
-                                                                 GstVideoInfo * v_info,
+                                                                 const GstAllocationParams * alloc_params,
+                                                                 const GstVideoInfo * v_info,
                                                                  guint plane,
-                                                                 GstVideoAlignment * valign,
+                                                                 const GstVideoAlignment * valign,
                                                                  GstGLTextureTarget target,
                                                                  GstGLFormat tex_format);
 GST_GL_API
 GstGLVideoAllocationParams * gst_gl_video_allocation_params_new_wrapped_data    (GstGLContext * context,
-                                                                                 GstAllocationParams * alloc_params,
-                                                                                 GstVideoInfo * v_info,
+                                                                                 const GstAllocationParams * alloc_params,
+                                                                                 const GstVideoInfo * v_info,
                                                                                  guint plane,
-                                                                                 GstVideoAlignment * valign,
+                                                                                 const GstVideoAlignment * valign,
                                                                                  GstGLTextureTarget target,
                                                                                  GstGLFormat tex_format,
                                                                                  gpointer wrapped_data,
@@ -177,10 +177,10 @@ GstGLVideoAllocationParams * gst_gl_video_allocation_params_new_wrapped_data    
 
 GST_GL_API
 GstGLVideoAllocationParams * gst_gl_video_allocation_params_new_wrapped_texture (GstGLContext * context,
-                                                                                 GstAllocationParams * alloc_params,
-                                                                                 GstVideoInfo * v_info,
+                                                                                 const GstAllocationParams * alloc_params,
+                                                                                 const GstVideoInfo * v_info,
                                                                                  guint plane,
-                                                                                 GstVideoAlignment * valign,
+                                                                                 const GstVideoAlignment * valign,
                                                                                  GstGLTextureTarget target,
                                                                                  GstGLFormat tex_format,
                                                                                  guint tex_id,
@@ -189,10 +189,10 @@ GstGLVideoAllocationParams * gst_gl_video_allocation_params_new_wrapped_texture 
 
 GST_GL_API
 GstGLVideoAllocationParams * gst_gl_video_allocation_params_new_wrapped_gl_handle (GstGLContext * context,
-                                                                                 GstAllocationParams * alloc_params,
-                                                                                 GstVideoInfo * v_info,
+                                                                                 const GstAllocationParams * alloc_params,
+                                                                                 const GstVideoInfo * v_info,
                                                                                  guint plane,
-                                                                                 GstVideoAlignment * valign,
+                                                                                 const GstVideoAlignment * valign,
                                                                                  GstGLTextureTarget target,
                                                                                  GstGLFormat tex_format,
                                                                                  gpointer gl_handle,
@@ -249,6 +249,16 @@ struct _GstGLMemoryAllocatorClass
  */
 #define GST_GL_MEMORY_ALLOCATOR_NAME   "GLMemory"
 
+/**
+ * GST_TYPE_GL_MEMORY:
+ *
+ * Since: 1.20
+ * Deprecated: 1.22: This type has no use.
+ */
+#define GST_TYPE_GL_MEMORY (gst_gl_memory_get_type())
+GST_GL_DEPRECATED
+GType gst_gl_memory_get_type(void);
+
 GST_GL_API
 void            gst_gl_memory_init_once (void);
 GST_GL_API
@@ -261,10 +271,10 @@ void            gst_gl_memory_init              (GstGLMemory * mem,
                                                  GstGLContext * context,
                                                  GstGLTextureTarget target,
                                                  GstGLFormat tex_format,
-                                                 GstAllocationParams *params,
-                                                 GstVideoInfo * info,
+                                                 const GstAllocationParams *params,
+                                                 const GstVideoInfo * info,
                                                  guint plane,
-                                                 GstVideoAlignment *valign,
+                                                 const GstVideoAlignment *valign,
                                                  gpointer user_data,
                                                  GDestroyNotify notify);
 

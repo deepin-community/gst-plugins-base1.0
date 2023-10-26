@@ -50,8 +50,35 @@ GType gst_gl_display_get_type (void);
  * @GST_GL_DISPLAY_TYPE_EGL: EGL display
  * @GST_GL_DISPLAY_TYPE_VIV_FB: Vivante Framebuffer display
  * @GST_GL_DISPLAY_TYPE_GBM: Mesa3D GBM display
- * @GST_GL_DISPLAY_TYPE_EGL_DEVICE: EGLDevice display (Since: 1.18)
  * @GST_GL_DISPLAY_TYPE_ANY: any display type
+ */
+/**
+ * GST_GL_DISPLAY_TYPE_EGL_DEVICE:
+ *
+ * EGLDevice display.
+ *
+ * Since: 1.18
+ */
+/**
+ * GST_GL_DISPLAY_TYPE_EAGL:
+ *
+ * EAGL display.
+ *
+ * Since: 1.20
+ */
+/**
+ * GST_GL_DISPLAY_TYPE_WINRT:
+ *
+ * WinRT display.
+ *
+ * Since: 1.20
+ */
+/**
+ * GST_GL_DISPLAY_TYPE_ANDROID:
+ *
+ * Android display.
+ *
+ * Since: 1.20
  */
 typedef enum
 {
@@ -65,6 +92,9 @@ typedef enum
   GST_GL_DISPLAY_TYPE_VIV_FB = (1 << 6),
   GST_GL_DISPLAY_TYPE_GBM = (1 << 7),
   GST_GL_DISPLAY_TYPE_EGL_DEVICE = (1 << 8),
+  GST_GL_DISPLAY_TYPE_EAGL = (1 << 9),
+  GST_GL_DISPLAY_TYPE_WINRT = (1 << 10),
+  GST_GL_DISPLAY_TYPE_ANDROID = (1 << 11),
 
   GST_GL_DISPLAY_TYPE_ANY = G_MAXUINT32
 } GstGLDisplayType;
@@ -104,6 +134,8 @@ struct _GstGLDisplayClass
 
 GST_GL_API
 GstGLDisplay *gst_gl_display_new (void);
+GST_GL_API
+GstGLDisplay *gst_gl_display_new_with_type (GstGLDisplayType type);
 
 #define gst_gl_display_lock(display)        GST_OBJECT_LOCK (display)
 #define gst_gl_display_unlock(display)      GST_OBJECT_UNLOCK (display)
@@ -148,7 +180,7 @@ GST_GL_API
 GstGLWindow *   gst_gl_display_create_window    (GstGLDisplay * display);
 GST_GL_API
 gboolean        gst_gl_display_remove_window    (GstGLDisplay * display, GstGLWindow * window);
-GST_GL_API G_DEPRECATED_FOR(gst_gl_display_retrieve_window)
+GST_GL_DEPRECATED_FOR(gst_gl_display_retrieve_window)
 GstGLWindow *   gst_gl_display_find_window      (GstGLDisplay * display, gpointer data, GCompareFunc compare_func);
 GST_GL_API
 GstGLWindow *   gst_gl_display_retrieve_window  (GstGLDisplay * display, gpointer data, GCompareFunc compare_func);

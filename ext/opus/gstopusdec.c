@@ -46,6 +46,7 @@
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
+#include "gstopuselements.h"
 #include "gstopusheader.h"
 #include "gstopuscommon.h"
 #include "gstopusdec.h"
@@ -78,6 +79,8 @@ static GstStaticPadTemplate opus_dec_sink_factory =
     );
 
 G_DEFINE_TYPE (GstOpusDec, gst_opus_dec, GST_TYPE_AUDIO_DECODER);
+GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (opusdec, "opusdec",
+    GST_RANK_PRIMARY, GST_TYPE_OPUS_DEC, opus_element_init (plugin));
 
 #define DB_TO_LINEAR(x) pow (10., (x) / 20.)
 
@@ -135,7 +138,7 @@ gst_opus_dec_class_init (GstOpusDecClass * klass)
   gst_element_class_add_static_pad_template (element_class,
       &opus_dec_sink_factory);
   gst_element_class_set_static_metadata (element_class, "Opus audio decoder",
-      "Codec/Decoder/Audio", "decode opus streams to audio",
+      "Codec/Decoder/Audio/Converter", "decode opus streams to audio",
       "Vincent Penquerc'h <vincent.penquerch@collabora.co.uk>");
   g_object_class_install_property (gobject_class, PROP_USE_INBAND_FEC,
       g_param_spec_boolean ("use-inband-fec", "Use in-band FEC",
@@ -282,7 +285,7 @@ gst_opus_dec_negotiate (GstOpusDec * dec, const GstAudioChannelPosition * pos)
     gint rate = dec->sample_rate, channels = dec->n_channels;
     GstCaps *constraint, *inter;
 
-    constraint = gst_caps_from_string ("audio/x-raw");
+    constraint = gst_caps_new_empty_simple ("audio/x-raw");
     if (dec->n_channels <= 2) { /* including 0 */
       gst_caps_set_simple (constraint, "channels", GST_TYPE_INT_RANGE, 1, 2,
           NULL);
@@ -301,13 +304,48 @@ gst_opus_dec_negotiate (GstOpusDec * dec, const GstAudioChannelPosition * pos)
       return FALSE;
     }
 
+    /* If we have a channels preference (0 means we prefer 2), then check if
+     * we can passthrough that. The preferred channel count might not be in
+     * the first structure! */
+    if (dec->n_channels <= 2) {
+      GstCaps *preferred =
+          gst_caps_new_simple ("audio/x-raw", "channels", G_TYPE_INT,
+          dec->n_channels > 0 ? dec->n_channels : 2, NULL);
+      GstCaps *tmp;
+
+      tmp = gst_caps_intersect (inter, preferred);
+      if (!gst_caps_is_empty (tmp)) {
+        gst_caps_unref (inter);
+        inter = tmp;
+      }
+
+      gst_caps_unref (preferred);
+    }
+
+    /* If we have a rate preference, then check if we can passthrough that.
+     * The preferred rate might not be in the first structure! */
+    {
+      GstCaps *preferred =
+          gst_caps_new_simple ("audio/x-raw", "rate", G_TYPE_INT,
+          dec->sample_rate > 0 ? dec->sample_rate : 48000, NULL);
+      GstCaps *tmp;
+
+      tmp = gst_caps_intersect (inter, preferred);
+      if (!gst_caps_is_empty (tmp)) {
+        gst_caps_unref (inter);
+        inter = tmp;
+      }
+
+      gst_caps_unref (preferred);
+    }
+
     inter = gst_caps_truncate (inter);
     s = gst_caps_get_structure (inter, 0);
     rate = dec->sample_rate > 0 ? dec->sample_rate : 48000;
     gst_structure_fixate_field_nearest_int (s, "rate", dec->sample_rate);
     gst_structure_get_int (s, "rate", &rate);
     channels = dec->n_channels > 0 ? dec->n_channels : 2;
-    gst_structure_fixate_field_nearest_int (s, "channels", dec->n_channels);
+    gst_structure_fixate_field_nearest_int (s, "channels", channels);
     gst_structure_get_int (s, "channels", &channels);
 
     gst_caps_unref (inter);
@@ -360,6 +398,7 @@ gst_opus_dec_parse_header (GstOpusDec * dec, GstBuffer * buf)
 {
   GstAudioChannelPosition pos[64];
   const GstAudioChannelPosition *posn = NULL;
+  guint8 n_channels;
 
   if (!gst_opus_header_is_id_header (buf)) {
     GST_ELEMENT_ERROR (dec, STREAM, FORMAT, (NULL),
@@ -369,7 +408,7 @@ gst_opus_dec_parse_header (GstOpusDec * dec, GstBuffer * buf)
 
   if (!gst_codec_utils_opus_parse_header (buf,
           &dec->sample_rate,
-          (guint8 *) & dec->n_channels,
+          &n_channels,
           &dec->channel_mapping_family,
           &dec->n_streams,
           &dec->n_stereo_streams,
@@ -378,6 +417,7 @@ gst_opus_dec_parse_header (GstOpusDec * dec, GstBuffer * buf)
         ("Failed to parse Opus ID header"));
     return GST_FLOW_ERROR;
   }
+  dec->n_channels = n_channels;
   dec->r128_gain_volume = gst_opus_dec_get_r128_volume (dec->r128_gain);
 
   GST_INFO_OBJECT (dec,
@@ -883,13 +923,15 @@ gst_opus_dec_set_format (GstAudioDecoder * bdec, GstCaps * caps)
     }
   } else {
     const GstAudioChannelPosition *posn = NULL;
+    guint8 n_channels;
 
     if (!gst_codec_utils_opus_parse_caps (caps, &dec->sample_rate,
-            (guint8 *) & dec->n_channels, &dec->channel_mapping_family,
+            &n_channels, &dec->channel_mapping_family,
             &dec->n_streams, &dec->n_stereo_streams, dec->channel_mapping)) {
       ret = FALSE;
       goto done;
     }
+    dec->n_channels = n_channels;
 
     if (dec->channel_mapping_family == 1 && dec->n_channels <= 8)
       posn = gst_opus_channel_positions[dec->n_channels - 1];

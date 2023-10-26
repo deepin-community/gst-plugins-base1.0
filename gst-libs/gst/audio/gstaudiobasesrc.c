@@ -40,10 +40,14 @@
 #include <gst/audio/audio.h>
 #include "gstaudiobasesrc.h"
 
-#include "gst/gst-i18n-plugin.h"
+#include <glib/gi18n-lib.h>
 
 GST_DEBUG_CATEGORY_STATIC (gst_audio_base_src_debug);
 #define GST_CAT_DEFAULT gst_audio_base_src_debug
+
+/* This function is public in >= 1.23, but internal in 1.22 */
+G_GNUC_INTERNAL
+    void __gst_audio_ring_buffer_set_errored (GstAudioRingBuffer * buf);
 
 struct _GstAudioBaseSrcPrivate
 {
@@ -518,7 +522,8 @@ gst_audio_base_src_setcaps (GstBaseSrc * bsrc, GstCaps * caps)
 
   spec = &src->ringbuffer->spec;
 
-  if (G_UNLIKELY (spec->caps && gst_caps_is_equal (spec->caps, caps))) {
+  if (G_UNLIKELY (gst_audio_ring_buffer_is_acquired (src->ringbuffer)
+          && gst_caps_is_equal (spec->caps, caps))) {
     GST_DEBUG_OBJECT (src,
         "Ringbuffer caps haven't changed, skipping reconfiguration");
     return TRUE;
@@ -1031,7 +1036,7 @@ gst_audio_base_src_create (GstBaseSrc * bsrc, guint64 offset, guint length,
 no_sync:
   GST_OBJECT_UNLOCK (src);
 
-  GST_BUFFER_TIMESTAMP (buf) = timestamp;
+  GST_BUFFER_PTS (buf) = timestamp;
   GST_BUFFER_DURATION (buf) = duration;
   GST_BUFFER_OFFSET (buf) = sample;
   GST_BUFFER_OFFSET_END (buf) = sample + samples;
@@ -1039,7 +1044,7 @@ no_sync:
   *outbuf = buf;
 
   GST_LOG_OBJECT (src, "Pushed buffer timestamp %" GST_TIME_FORMAT,
-      GST_TIME_ARGS (GST_BUFFER_TIMESTAMP (buf)));
+      GST_TIME_ARGS (GST_BUFFER_PTS (buf)));
 
   return GST_FLOW_OK;
 
@@ -1085,7 +1090,7 @@ got_error:
  * the ::create_ringbuffer vmethod and will set @src as the parent of the
  * returned buffer (see gst_object_set_parent()).
  *
- * Returns: (transfer none): The new ringbuffer of @src.
+ * Returns: (transfer none) (nullable): The new ringbuffer of @src.
  */
 GstAudioRingBuffer *
 gst_audio_base_src_create_ringbuffer (GstAudioBaseSrc * src)
@@ -1228,7 +1233,7 @@ gst_audio_base_src_post_message (GstElement * element, GstMessage * message)
      * flow error message */
     ret = GST_ELEMENT_CLASS (parent_class)->post_message (element, message);
 
-    g_atomic_int_set (&ringbuffer->state, GST_AUDIO_RING_BUFFER_STATE_ERROR);
+    __gst_audio_ring_buffer_set_errored (ringbuffer);
     GST_AUDIO_RING_BUFFER_SIGNAL (ringbuffer);
     gst_object_unref (ringbuffer);
   } else {

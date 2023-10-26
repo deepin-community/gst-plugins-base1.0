@@ -138,6 +138,9 @@ static GParamSpec *pspec_add = NULL;
 
 #define gst_audio_rate_parent_class parent_class
 G_DEFINE_TYPE (GstAudioRate, gst_audio_rate, GST_TYPE_ELEMENT);
+GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (audiorate, "audiorate", GST_RANK_NONE,
+    GST_TYPE_AUDIO_RATE, GST_DEBUG_CATEGORY_INIT (audio_rate_debug, "audiorate",
+        0, "AudioRate stream fixer"));
 
 static void
 gst_audio_rate_class_init (GstAudioRateClass * klass)
@@ -559,7 +562,7 @@ gst_audio_rate_chain (GstPad * pad, GstObject * parent, GstBuffer * buf)
       fill = gst_buffer_new_and_alloc (fillsize);
 
       gst_buffer_map (fill, &fillmap, GST_MAP_WRITE);
-      gst_audio_format_fill_silence (audiorate->info.finfo, fillmap.data,
+      gst_audio_format_info_fill_silence (audiorate->info.finfo, fillmap.data,
           fillmap.size);
       gst_buffer_unmap (fill, &fillmap);
 
@@ -782,11 +785,7 @@ gst_audio_rate_change_state (GstElement * element, GstStateChange transition)
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
-  GST_DEBUG_CATEGORY_INIT (audio_rate_debug, "audiorate", 0,
-      "AudioRate stream fixer");
-
-  return gst_element_register (plugin, "audiorate", GST_RANK_NONE,
-      GST_TYPE_AUDIO_RATE);
+  return GST_ELEMENT_REGISTER (audiorate, plugin);
 }
 
 GST_PLUGIN_DEFINE (GST_VERSION_MAJOR,

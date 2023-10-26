@@ -368,7 +368,7 @@ video_format_is_packed (GstVideoFormat fmt)
 static gint
 get_num_formats (void)
 {
-  gint num_formats = 100;
+  gint num_formats = 200;
   fail_unless (gst_video_format_to_string (num_formats) == NULL);
   while (gst_video_format_to_string (num_formats) == NULL)
     --num_formats;
@@ -2398,6 +2398,81 @@ GST_END_TEST;
 #undef HEIGHT
 #undef TIME
 
+typedef struct
+{
+  const gchar *name;
+  GstVideoChromaSite site;
+} ChromaSiteElem;
+
+GST_START_TEST (test_video_chroma_site)
+{
+  ChromaSiteElem valid_sites[] = {
+    /* pre-defined flags */
+    {"jpeg", GST_VIDEO_CHROMA_SITE_JPEG},
+    {"mpeg2", GST_VIDEO_CHROMA_SITE_MPEG2},
+    {"dv", GST_VIDEO_CHROMA_SITE_DV},
+    {"alt-line", GST_VIDEO_CHROMA_SITE_ALT_LINE},
+    {"cosited", GST_VIDEO_CHROMA_SITE_COSITED},
+    /* new values */
+    {"v-cosited", GST_VIDEO_CHROMA_SITE_V_COSITED},
+    {"v-cosited+alt-line",
+        GST_VIDEO_CHROMA_SITE_V_COSITED | GST_VIDEO_CHROMA_SITE_ALT_LINE},
+  };
+  ChromaSiteElem unknown_sites[] = {
+    {NULL, GST_VIDEO_CHROMA_SITE_UNKNOWN},
+    /* Any combination with GST_VIDEO_CHROMA_SITE_NONE doesn' make sense */
+    {NULL, GST_VIDEO_CHROMA_SITE_NONE | GST_VIDEO_CHROMA_SITE_H_COSITED},
+  };
+  gint i;
+
+  for (i = 0; i < G_N_ELEMENTS (valid_sites); i++) {
+    gchar *site = gst_video_chroma_site_to_string (valid_sites[i].site);
+
+    fail_unless (site != NULL);
+    fail_unless (g_strcmp0 (site, valid_sites[i].name) == 0);
+    fail_unless (gst_video_chroma_site_from_string (site) ==
+        valid_sites[i].site);
+    g_free (site);
+  }
+
+  for (i = 0; i < G_N_ELEMENTS (unknown_sites); i++) {
+    gchar *site = gst_video_chroma_site_to_string (unknown_sites[i].site);
+    fail_unless (site == NULL);
+  }
+
+  /* totally wrong string */
+  fail_unless (gst_video_chroma_site_from_string ("foo/bar") ==
+      GST_VIDEO_CHROMA_SITE_UNKNOWN);
+
+  /* valid ones */
+  fail_unless (gst_video_chroma_site_from_string ("jpeg") ==
+      GST_VIDEO_CHROMA_SITE_NONE);
+  fail_unless (gst_video_chroma_site_from_string ("none") ==
+      GST_VIDEO_CHROMA_SITE_NONE);
+
+  fail_unless (gst_video_chroma_site_from_string ("mpeg2") ==
+      GST_VIDEO_CHROMA_SITE_H_COSITED);
+  fail_unless (gst_video_chroma_site_from_string ("h-cosited") ==
+      GST_VIDEO_CHROMA_SITE_H_COSITED);
+
+  /* Equal to "cosited" */
+  fail_unless (gst_video_chroma_site_from_string ("v-cosited+h-cosited") ==
+      GST_VIDEO_CHROMA_SITE_COSITED);
+
+  fail_unless (gst_video_chroma_site_from_string ("v-cosited") ==
+      GST_VIDEO_CHROMA_SITE_V_COSITED);
+
+  /* none + something doesn't make sense */
+  fail_unless (gst_video_chroma_site_from_string ("none+v-cosited") ==
+      GST_VIDEO_CHROMA_SITE_UNKNOWN);
+
+  /* mix of valid and invalid strings */
+  fail_unless (gst_video_chroma_site_from_string ("mpeg2+foo/bar") ==
+      GST_VIDEO_CHROMA_SITE_UNKNOWN);
+}
+
+GST_END_TEST;
+
 GST_START_TEST (test_video_scaler)
 {
   GstVideoScaler *scale;
@@ -2664,6 +2739,11 @@ GST_START_TEST (test_video_convert)
           GST_VIDEO_CONVERTER_OPT_DEST_WIDTH, G_TYPE_INT, 300,
           GST_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT, 220, NULL));
 
+  g_assert (gst_video_info_is_equal (&ininfo,
+          gst_video_converter_get_in_info (convert)));
+  g_assert (gst_video_info_is_equal (&outinfo,
+          gst_video_converter_get_out_info (convert)));
+
   gst_video_converter_frame (convert, &inframe, &outframe);
   gst_video_converter_free (convert);
 
@@ -2719,6 +2799,84 @@ GST_START_TEST (test_video_convert)
 
 GST_END_TEST;
 
+GST_START_TEST (test_video_convert_multithreading)
+{
+  GstVideoInfo ininfo, outinfo;
+  GstVideoFrame inframe, outframe, refframe;
+  GstBuffer *inbuffer, *outbuffer, *refbuffer;
+  GstVideoConverter *convert;
+  GstMapInfo info;
+  GstTaskPool *pool;
+
+  /* Large enough input resolution for video-converter to actually use
+   * 4 threads if required */
+  fail_unless (gst_video_info_set_format (&ininfo, GST_VIDEO_FORMAT_ARGB, 1280,
+          720));
+  inbuffer = gst_buffer_new_and_alloc (ininfo.size);
+  gst_buffer_memset (inbuffer, 0, 0, -1);
+  gst_video_frame_map (&inframe, &ininfo, inbuffer, GST_MAP_READ);
+
+  fail_unless (gst_video_info_set_format (&outinfo, GST_VIDEO_FORMAT_BGRx, 400,
+          300));
+  outbuffer = gst_buffer_new_and_alloc (outinfo.size);
+  refbuffer = gst_buffer_new_and_alloc (outinfo.size);
+
+  gst_video_frame_map (&outframe, &outinfo, outbuffer, GST_MAP_WRITE);
+  gst_video_frame_map (&refframe, &outinfo, refbuffer, GST_MAP_WRITE);
+
+  /* Single threaded-conversion */
+  convert = gst_video_converter_new (&ininfo, &outinfo,
+      gst_structure_new_empty ("options"));
+  gst_video_converter_frame (convert, &inframe, &refframe);
+  gst_video_converter_free (convert);
+
+  /* Multithreaded conversion, converter creates pool */
+  convert = gst_video_converter_new (&ininfo, &outinfo,
+      gst_structure_new ("options",
+          GST_VIDEO_CONVERTER_OPT_THREADS, G_TYPE_UINT, 4, NULL)
+      );
+  gst_video_converter_frame (convert, &inframe, &outframe);
+  gst_video_converter_free (convert);
+
+  gst_video_frame_unmap (&outframe);
+  gst_video_frame_unmap (&refframe);
+
+  gst_buffer_map (outbuffer, &info, GST_MAP_READ);
+  fail_unless (gst_buffer_memcmp (refbuffer, 0, info.data, info.size) == 0);
+  gst_buffer_unmap (outbuffer, &info);
+
+  gst_video_frame_map (&outframe, &outinfo, outbuffer, GST_MAP_WRITE);
+  gst_video_frame_map (&refframe, &outinfo, refbuffer, GST_MAP_WRITE);
+
+  /* Multi-threaded conversion, user-provided pool */
+  pool = gst_shared_task_pool_new ();
+  gst_shared_task_pool_set_max_threads (GST_SHARED_TASK_POOL (pool), 4);
+  gst_task_pool_prepare (pool, NULL);
+  convert = gst_video_converter_new_with_pool (&ininfo, &outinfo,
+      gst_structure_new ("options",
+          GST_VIDEO_CONVERTER_OPT_THREADS, G_TYPE_UINT, 4, NULL), pool);
+  gst_video_converter_frame (convert, &inframe, &outframe);
+  gst_video_converter_free (convert);
+  gst_task_pool_cleanup (pool);
+  gst_object_unref (pool);
+
+  gst_video_frame_unmap (&outframe);
+  gst_video_frame_unmap (&refframe);
+
+  gst_buffer_map (outbuffer, &info, GST_MAP_READ);
+  fail_unless (gst_buffer_memcmp (refbuffer, 0, info.data, info.size) == 0);
+  gst_buffer_unmap (outbuffer, &info);
+
+
+  gst_buffer_unref (refbuffer);
+  gst_buffer_unref (outbuffer);
+  gst_video_frame_unmap (&inframe);
+  gst_buffer_unref (inbuffer);
+
+}
+
+GST_END_TEST;
+
 GST_START_TEST (test_video_transfer)
 {
   gint i, j;
@@ -2728,10 +2886,10 @@ GST_START_TEST (test_video_transfer)
     for (i = 0; i < 256; i++) {
       gdouble val1, val2;
 
-      val1 = gst_video_color_transfer_encode (j, i / 255.0);
+      val1 = gst_video_transfer_function_encode (j, i / 255.0);
       fail_if (val1 < 0.0 || val1 > 1.0);
 
-      val2 = gst_video_color_transfer_decode (j, val1);
+      val2 = gst_video_transfer_function_decode (j, val1);
       fail_if (val2 < 0.0 || val2 > 1.0);
 
       GST_DEBUG ("%d: %d %f->%f->%f %d", j, i, i / 255.0, val1, val2,
@@ -3050,10 +3208,13 @@ GST_START_TEST (test_video_formats_pstrides)
         || fmt == GST_VIDEO_FORMAT_NV12_64Z32
         || fmt == GST_VIDEO_FORMAT_NV12_4L4
         || fmt == GST_VIDEO_FORMAT_NV12_32L32
+        || fmt == GST_VIDEO_FORMAT_NV12_16L32S
         || fmt == GST_VIDEO_FORMAT_NV12_10LE32
         || fmt == GST_VIDEO_FORMAT_NV16_10LE32
         || fmt == GST_VIDEO_FORMAT_NV12_10LE40
-        || fmt == GST_VIDEO_FORMAT_Y410) {
+        || fmt == GST_VIDEO_FORMAT_Y410
+        || fmt == GST_VIDEO_FORMAT_NV12_8L128
+        || fmt == GST_VIDEO_FORMAT_NV12_10BE_8L128) {
       fmt++;
       continue;
     }
@@ -3850,6 +4011,106 @@ GST_START_TEST (test_video_make_raw_caps)
 
 GST_END_TEST;
 
+GST_START_TEST (test_video_extrapolate_stride)
+{
+  guint num_formats = get_num_formats ();
+  GstVideoFormat format;
+
+  for (format = 2; format < num_formats; format++) {
+    GstVideoInfo info;
+    guint p;
+
+    /*
+     * Use an easy resolution, since GStreamer uses arbitrary padding which
+     * cannot be extrapolated.
+     */
+    gst_video_info_set_format (&info, format, 320, 240);
+
+    /* Skip over tiled formats, since stride meaning is different */
+    if (GST_VIDEO_FORMAT_INFO_IS_TILED (info.finfo))
+      continue;
+
+    for (p = 0; p < GST_VIDEO_INFO_N_PLANES (&info); p++) {
+      guint stride;
+
+      /* Skip over palette planes */
+      if (GST_VIDEO_FORMAT_INFO_HAS_PALETTE (info.finfo) &&
+          p >= GST_VIDEO_COMP_PALETTE)
+        break;
+
+      stride = gst_video_format_info_extrapolate_stride (info.finfo, p,
+          info.stride[0]);
+      fail_unless (stride == info.stride[p]);
+    }
+  }
+}
+
+GST_END_TEST;
+
+GST_START_TEST (test_auto_video_frame_unmap)
+{
+#ifdef g_auto
+  g_autoptr (GstBuffer) buf = NULL;
+  GstVideoInfo info;
+
+  fail_unless (gst_video_info_set_format (&info, GST_VIDEO_FORMAT_ENCODED, 10,
+          10));
+  buf = gst_buffer_new_and_alloc (info.size);
+
+  {
+    // unmap should be no-op
+    g_auto (GstVideoFrame) frame = GST_VIDEO_FRAME_INIT;
+    fail_unless (frame.buffer == NULL);
+  }
+
+  {
+    g_auto (GstVideoFrame) frame = GST_VIDEO_FRAME_INIT;
+    gst_video_frame_map (&frame, &info, buf, GST_MAP_READ);
+    fail_unless_equals_int (GST_MINI_OBJECT_REFCOUNT (buf), 2);
+  }
+
+  fail_unless_equals_int (GST_MINI_OBJECT_REFCOUNT (buf), 1);
+
+#endif
+}
+
+GST_END_TEST;
+
+static gboolean
+is_equal_primaries_coord (const GstVideoColorPrimariesInfo * a,
+    const GstVideoColorPrimariesInfo * b)
+{
+  return (a->Wx == b->Wx && a->Wy == b->Wy && a->Rx == b->Rx && a->Ry == a->Ry
+      && a->Gx == b->Gx && a->Gy == b->Gy && a->Bx == b->Bx && a->By == b->By);
+}
+
+GST_START_TEST (test_video_color_primaries_equivalent)
+{
+  guint i, j;
+
+  for (i = 0; i <= GST_VIDEO_COLOR_PRIMARIES_EBU3213; i++) {
+    for (j = 0; j <= GST_VIDEO_COLOR_PRIMARIES_EBU3213; j++) {
+      GstVideoColorPrimaries primaries = (GstVideoColorPrimaries) i;
+      GstVideoColorPrimaries other = (GstVideoColorPrimaries) j;
+      const GstVideoColorPrimariesInfo *primaries_info =
+          gst_video_color_primaries_get_info (primaries);
+      const GstVideoColorPrimariesInfo *other_info =
+          gst_video_color_primaries_get_info (other);
+      gboolean equal =
+          gst_video_color_primaries_is_equivalent (primaries, other);
+      gboolean same_coord = is_equal_primaries_coord (primaries_info,
+          other_info);
+
+      if (equal)
+        fail_unless (same_coord);
+      else
+        fail_if (same_coord);
+    }
+  }
+}
+
+GST_END_TEST;
+
 static Suite *
 video_suite (void)
 {
@@ -3881,6 +4142,7 @@ video_suite (void)
   tcase_add_test (tc_chain, test_overlay_composition_global_alpha);
   tcase_add_test (tc_chain, test_video_pack_unpack2);
   tcase_add_test (tc_chain, test_video_chroma);
+  tcase_add_test (tc_chain, test_video_chroma_site);
   tcase_add_test (tc_chain, test_video_scaler);
   tcase_add_test (tc_chain, test_video_color_convert_rgb_rgb);
   tcase_add_test (tc_chain, test_video_color_convert_rgb_yuv);
@@ -3889,6 +4151,7 @@ video_suite (void)
   tcase_add_test (tc_chain, test_video_color_convert_other);
   tcase_add_test (tc_chain, test_video_size_convert);
   tcase_add_test (tc_chain, test_video_convert);
+  tcase_add_test (tc_chain, test_video_convert_multithreading);
   tcase_add_test (tc_chain, test_video_transfer);
   tcase_add_test (tc_chain, test_overlay_blend);
   tcase_add_test (tc_chain, test_video_center_rect);
@@ -3902,6 +4165,9 @@ video_suite (void)
   tcase_add_test (tc_chain, test_video_meta_align);
   tcase_add_test (tc_chain, test_video_flags);
   tcase_add_test (tc_chain, test_video_make_raw_caps);
+  tcase_add_test (tc_chain, test_video_extrapolate_stride);
+  tcase_add_test (tc_chain, test_auto_video_frame_unmap);
+  tcase_add_test (tc_chain, test_video_color_primaries_equivalent);
 
   return s;
 }

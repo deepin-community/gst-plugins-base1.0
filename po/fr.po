@@ -4,14 +4,14 @@
 #
 # Nicolas Velin <nicolas@velin.fr>, 2008.
 # Claude Paroz <claude@2xlibre.net>, 2008-2011.
-# Stéphane Aulery <lkppo@free.fr>, 2015-2016.
+# Stéphane Aulery <lkppo@free.fr>, 2015-2022.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: gst-plugins-base 1.10.0\n"
-"Report-Msgid-Bugs-To: http://bugzilla.gnome.org/\n"
-"POT-Creation-Date: 2019-02-26 11:43+0000\n"
-"PO-Revision-Date: 2016-12-23 20:39+0100\n"
+"Project-Id-Version: gst-plugins-base 1.20.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2023-02-22 11:52+0000\n"
+"PO-Revision-Date: 2022-07-05 00:21+0200\n"
 "Last-Translator: Stéphane Aulery <lkppo@free.fr>\n"
 "Language-Team: French <traduc@traduc.org>\n"
 "Language: fr\n"
@@ -85,30 +85,17 @@ msgstr "Impossible de rechercher sur le CD."
 msgid "Could not read CD."
 msgstr "Impossible de lire le CD."
 
-msgid "failed to draw pattern"
-msgstr ""
-
-msgid "A GL error occurred"
-msgstr ""
-
-msgid "format wasn't negotiated before get function"
-msgstr ""
-
-#, c-format
-msgid "Missing element '%s' - check your GStreamer installation."
-msgstr "Élément « %s » manquant — Vérifiez votre installation de GStreamer."
-
 msgid "Could not determine type of stream"
 msgstr "Impossible de déterminer le type de flux"
 
 msgid "This appears to be a text file"
 msgstr "Ce fichier semble être un fichier texte"
 
-msgid "Could not create \"uridecodebin\" element."
-msgstr "Impossible de créer un élément « uridecodebin »."
+#, c-format
+msgid "Missing element '%s' - check your GStreamer installation."
+msgstr "Élément « %s » manquant — Vérifiez votre installation de GStreamer."
 
-#, fuzzy
-msgid "Could not create \"uridecodebin3\" element."
+msgid "Could not create \"uridecodebin\" element."
 msgstr "Impossible de créer un élément « uridecodebin »."
 
 #, c-format
@@ -174,7 +161,15 @@ msgstr "Ce type de flux ne peut pas encore être lu."
 msgid "No URI handler implemented for \"%s\"."
 msgstr "Aucun gestionnaire d’URI implémenté pour « %s »."
 
+#, fuzzy
+msgid "Source element can't be prepared"
+msgstr "Élément source non valide."
+
 msgid "Source element is invalid."
+msgstr "Élément source non valide."
+
+#, fuzzy
+msgid "Source element has no pads."
 msgstr "Élément source non valide."
 
 #, c-format
@@ -186,6 +181,15 @@ msgstr "Impossible d’enregistrer assez rapidement les données audio"
 
 msgid "This CD has no audio tracks"
 msgstr "Ce CD ne contient aucune piste audio"
+
+msgid "failed to draw pattern"
+msgstr "Tracer du motif en échec"
+
+msgid "A GL error occurred"
+msgstr "Erreur de rendu GL"
+
+msgid "format wasn't negotiated before get function"
+msgstr "le format n'a pas été négocié avant l'appel de fonction"
 
 msgid "ID3 tag"
 msgstr "Étiquette ID3"
@@ -221,9 +225,11 @@ msgstr "MSZH sans perte"
 msgid "Run-length encoding"
 msgstr "Codage par plages"
 
+#. subtitle formats with static descriptions
 msgid "Timed Text"
 msgstr "Timed Text"
 
+#. FIXME: add variant field to typefinder?
 msgid "Subtitle"
 msgstr "Sous-titre"
 
@@ -243,10 +249,10 @@ msgid "TMPlayer subtitle format"
 msgstr "Format de sous-titres TMPlayer"
 
 msgid "CEA 608 Closed Caption"
-msgstr ""
+msgstr "Sous-titres CEA 608"
 
 msgid "CEA 708 Closed Caption"
-msgstr ""
+msgstr "Sous-titres CEA 708"
 
 msgid "Kate subtitle format"
 msgstr "Format de sous-titres Kate"
@@ -303,6 +309,9 @@ msgstr "Source RTSP (Real Time Streaming Protocol)"
 msgid "Microsoft Media Server (MMS) protocol source"
 msgstr "Source protocole MMS (Microsoft Media Server)"
 
+#. TODO: find out how to add a comment for translators to the source code
+#. * (and tell them to make the first letter uppercase below if they move
+#. * the protocol to the middle or end of the string)
 #, c-format
 msgid "%s protocol source"
 msgstr "Source protocole %s"
@@ -366,6 +375,8 @@ msgstr "Élément décodeur inconnu"
 msgid "Unknown encoder element"
 msgstr "Élément codeur inconnu"
 
+#. we should really never get here, but we better still return
+#. * something if we do
 msgid "Plugin or element of unknown type"
 msgstr "Greffon ou élément de type inconnu"
 
@@ -396,11 +407,29 @@ msgstr "identifiant d’artiste de l’album"
 msgid "MusicBrainz album artist ID"
 msgstr "identifiant d’artiste de l’album MusicBrainz"
 
+msgid "release group ID"
+msgstr "relâcher l'identifiant de groupe"
+
+msgid "MusicBrainz release group ID"
+msgstr "identifiant de groupe de publication MusicBrainz"
+
+msgid "release track ID"
+msgstr "identifiant de piste publié"
+
+msgid "MusicBrainz release track ID"
+msgstr "identifiant de piste publié MusicBrainz"
+
 msgid "track TRM ID"
 msgstr "identifiant TRM de piste"
 
 msgid "MusicBrainz TRM ID"
 msgstr "identifiant TRM MusicBrainz"
+
+msgid "AcoustID ID"
+msgstr "identifiant AcoustID"
+
+msgid "AcoustID fingerprint (chromaprint)"
+msgstr "empreinte AcoustID (chromaprint)"
 
 msgid "capturing shutter speed"
 msgstr "vitesse d’obturation de la capture"
@@ -567,9 +596,18 @@ msgstr ""
 "Ne pas quitter après l’affichage de la liste initiale des périphèriques, "
 "mais attendre l’ajout ou la suppression de périphèriques."
 
+msgid "Include devices from hidden device providers."
+msgstr "Inclure les périphériques des fournisseurs cachés."
+
 #, c-format
 msgid "Volume: %.0f%%"
 msgstr "Volume : %.0f%%"
+
+msgid "Mute: on"
+msgstr "Sourdine : on"
+
+msgid "Mute: off"
+msgstr "Sourdine : off"
 
 msgid "Buffering..."
 msgstr "Mise en cache…"
@@ -635,6 +673,9 @@ msgstr "augmenter le volume"
 msgid "volume down"
 msgstr "baisser le volume"
 
+msgid "toggle audio mute on/off"
+msgstr "basculer la sourdine on/off"
+
 msgid "increase playback rate"
 msgstr "augmenter la vitesse de lecture"
 
@@ -647,13 +688,16 @@ msgstr "modifier le sens de lecture"
 msgid "enable/disable trick modes"
 msgstr "activer / désactiver les astuces"
 
-msgid "change audio track"
+#, fuzzy
+msgid "change to previous/next audio track"
 msgstr "modifier la piste audio"
 
-msgid "change video track"
+#, fuzzy
+msgid "change to previous/next video track"
 msgstr "modifier la piste vidéo"
 
-msgid "change subtitle track"
+#, fuzzy
+msgid "change to previous/next subtitle track"
 msgstr "modifier la piste de sous-titre"
 
 msgid "seek to beginning"
@@ -664,6 +708,10 @@ msgstr "afficher les raccourcis clavier"
 
 msgid "Interactive mode - keyboard controls:"
 msgstr "Mode interactif — commandes clavier :"
+
+#, c-format
+msgid "Use Windows high-resolution clock, precision: %u ms\n"
+msgstr "Utiliser l'horloge haute précision de Windows : précision à %u ms\n"
 
 msgid "Output status information and property notifications"
 msgstr "Afficher des informations sur l’état et les notifications de propriété"
@@ -682,6 +730,9 @@ msgstr "Récepteur audio à utiliser (autoaudiosink par défaut)"
 msgid "Enable gapless playback"
 msgstr "Activer la lecture sans blanc"
 
+msgid "Enable instantaneous uri changes (only with playbin3)"
+msgstr ""
+
 msgid "Shuffle playlist"
 msgstr "Mélanger les morceaux"
 
@@ -691,16 +742,39 @@ msgstr "Désactiver les commandes interactives au clavier"
 msgid "Volume"
 msgstr "Volume"
 
+msgid "Start position in seconds."
+msgstr "Position de départ en secondes."
+
+msgid "Enable accurate seeking"
+msgstr ""
+
 msgid "Playlist file containing input media files"
 msgstr "Fichier de lecture contenant des fichiers de media d’entrée"
+
+msgid "Use the experimental instant-rate-change flag when changing rate"
+msgstr ""
+"Utiliser l'indicateur de changement de débit instantané expérimental lors du "
+"changement de débit"
 
 msgid "Do not print any output (apart from errors)"
 msgstr "Ne pas afficher de message en sortie (sauf les erreurs)"
 
-msgid "Use playbin3 pipeline"
+#, fuzzy
+msgid ""
+"Use playbin3 pipeline (default varies depending on 'USE_PLAYBIN' env "
+"variable)"
 msgstr ""
+"(la valeur par défaut dépend de la variable d'environnement USE_PLAYBIN)"
 
-msgid "(default varies depending on 'USE_PLAYBIN' env variable)"
+msgid ""
+"Keep showing the last frame on EOS until quit or playlist change command "
+"(gapless is ignored)"
+msgstr ""
+"Continuer à afficher la dernière frame après la fin de lecture jusqu'à la "
+"fin de programme ou une nouvelle commande de lecture (la lecture sans blanc "
+"est ignorée)"
+
+msgid "Do not print current position of pipeline"
 msgstr ""
 
 #, c-format
@@ -713,11 +787,8 @@ msgstr "Vous devez fournir au moins un nom de fichier ou une URI à lire."
 msgid "Press 'k' to see a list of keyboard shortcuts.\n"
 msgstr "Pressez k pour voir la liste des raccourcis clavier.\n"
 
-#~ msgid "Could not create \"decodebin3\" element."
-#~ msgstr "Impossible de créer un élément « decodebin3 »."
+#~ msgid "Could not create \"uridecodebin3\" element."
+#~ msgstr "Impossible de créer un élément « uridecodebin3 »."
 
-#~ msgid "Could not create \"urisourcebin\" element."
-#~ msgstr "Impossible de créer un élément « urisourcebin »."
-
-#~ msgid "Internal data stream error."
-#~ msgstr "Erreur du flux de données interne."
+#~ msgid "Use playbin3 pipeline"
+#~ msgstr "Utiliser un pipeline playbin3"

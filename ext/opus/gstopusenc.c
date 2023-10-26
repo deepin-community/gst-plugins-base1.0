@@ -52,6 +52,8 @@
 #include <gst/pbutils/pbutils.h>
 #include <gst/tag/tag.h>
 #include <gst/glib-compat-private.h>
+
+#include "gstopuselements.h"
 #include "gstopusheader.h"
 #include "gstopuscommon.h"
 #include "gstopusenc.h"
@@ -193,7 +195,7 @@ static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE ("src",
 #define DEFAULT_FRAMESIZE       20
 #define DEFAULT_CBR             TRUE
 #define DEFAULT_CONSTRAINED_VBR TRUE
-#define DEFAULT_BITRATE_TYPE    BITRATE_TYPE_CBR
+#define DEFAULT_BITRATE_TYPE    BITRATE_TYPE_CONSTRAINED_VBR
 #define DEFAULT_COMPLEXITY      10
 #define DEFAULT_INBAND_FEC      FALSE
 #define DEFAULT_DTX             FALSE
@@ -243,6 +245,8 @@ static GstFlowReturn gst_opus_enc_encode (GstOpusEnc * enc, GstBuffer * buffer);
 G_DEFINE_TYPE_WITH_CODE (GstOpusEnc, gst_opus_enc, GST_TYPE_AUDIO_ENCODER,
     G_IMPLEMENT_INTERFACE (GST_TYPE_TAG_SETTER, NULL);
     G_IMPLEMENT_INTERFACE (GST_TYPE_PRESET, NULL));
+GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (opusenc, "opusenc",
+    GST_RANK_PRIMARY, GST_TYPE_OPUS_ENC, opus_element_init (plugin));
 
 static void
 gst_opus_enc_set_tags (GstOpusEnc * enc)
@@ -321,7 +325,8 @@ gst_opus_enc_class_init (GstOpusEncClass * klass)
           GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject_class, PROP_INBAND_FEC,
       g_param_spec_boolean ("inband-fec", "In-band FEC",
-          "Enable forward error correction", DEFAULT_INBAND_FEC,
+          "Enable in-band forward error correction (use in combination with "
+          "the packet-loss-percentage property)", DEFAULT_INBAND_FEC,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
           GST_PARAM_MUTABLE_PLAYING));
   g_object_class_install_property (gobject_class, PROP_DTX,
@@ -503,8 +508,7 @@ gst_opus_enc_find_channel_position_in_vorbis_order (GstOpusEnc * enc,
     }
   }
   GST_WARNING_OBJECT (enc,
-      "Channel position %s is not representable in Vorbis order",
-      gst_opus_channel_names[position]);
+      "Channel position %d is not representable in Vorbis order", position);
   return -1;
 }
 
@@ -615,8 +619,8 @@ gst_opus_enc_setup_channel_mappings (GstOpusEnc * enc,
          needs to be done */
       if (!positions_done[position]) {
         int cv;
-        GST_DEBUG_OBJECT (enc, "Channel position %s is not mapped yet, adding",
-            gst_opus_channel_names[position]);
+        GST_DEBUG_OBJECT (enc, "Channel position %d is not mapped yet, adding",
+            position);
         cv = gst_opus_enc_find_channel_position_in_vorbis_order (enc, position);
         if (cv < 0)
           g_assert_not_reached ();

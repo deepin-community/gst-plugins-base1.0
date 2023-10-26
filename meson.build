@@ -1,6 +1,6 @@
 project('gst-plugins-base', 'c',
-  version : '1.18.5',
-  meson_version : '>= 0.48',
+  version : '1.22.6',
+  meson_version : '>= 0.62',
   default_options : [ 'warning_level=1',
                       'buildtype=debugoptimized' ])
 
@@ -14,6 +14,7 @@ if version_arr.length() == 4
 else
   gst_version_nano = 0
 endif
+gst_version_is_stable = gst_version_minor.is_even()
 gst_version_is_dev = gst_version_minor % 2 == 1 and gst_version_micro < 90
 
 host_system = host_machine.system()
@@ -26,9 +27,14 @@ else
   have_objc = false
 endif
 
-glib_req = '>= 2.44.0'
+glib_req = '>= 2.62.0'
 orc_req = '>= 0.4.24'
-gst_req = '>= @0@.@1@.0'.format(gst_version_major, gst_version_minor)
+
+if gst_version_is_stable
+  gst_req = '>= @0@.@1@.0'.format(gst_version_major, gst_version_minor)
+else
+  gst_req = '>= ' + gst_version
+endif
 
 api_version = '1.0'
 soversion = 0
@@ -39,22 +45,45 @@ libversion = '@0@.@1@.0'.format(soversion, curversion)
 osxversion = curversion + 1
 
 plugins_install_dir = join_paths(get_option('libdir'), 'gstreamer-1.0')
+static_build = get_option('default_library') == 'static'
 plugins = []
+gst_libraries = []
 
 cc = meson.get_compiler('c')
 
 if cc.get_id() == 'msvc'
-  # Ignore several spurious warnings for things gstreamer does very commonly
-  # If a warning is completely useless and spammy, use '/wdXXXX' to suppress it
-  # If a warning is harmless but hard to fix, use '/woXXXX' so it's shown once
-  # NOTE: Only add warnings here if you are sure they're spurious
-  add_project_arguments(
+  msvc_args = [
+      # Ignore several spurious warnings for things gstreamer does very commonly
+      # If a warning is completely useless and spammy, use '/wdXXXX' to suppress it
+      # If a warning is harmless but hard to fix, use '/woXXXX' so it's shown once
+      # NOTE: Only add warnings here if you are sure they're spurious
       '/wd4018', # implicit signed/unsigned conversion
       '/wd4146', # unary minus on unsigned (beware INT_MIN)
       '/wd4244', # lossy type conversion (e.g. double -> int)
       '/wd4305', # truncating type conversion (e.g. double -> float)
       cc.get_supported_arguments(['/utf-8']), # set the input encoding to utf-8
-      language : 'c')
+  ]
+
+  if gst_version_is_dev
+    # Enable some warnings on MSVC to match GCC/Clang behaviour
+    msvc_args += cc.get_supported_arguments([
+      '/we4002', # too many actual parameters for macro 'identifier'
+      '/we4003', # not enough actual parameters for macro 'identifier'
+      '/we4013', # 'function' undefined; assuming extern returning int
+      '/we4020', # 'function' : too many actual parameters
+      '/we4027', # function declared without formal parameter list
+      '/we4029', # declared formal parameter list different from definition
+      '/we4033', # 'function' must return a value
+      '/we4045', # 'array' : array bounds overflow
+      '/we4047', # 'operator' : 'identifier1' differs in levels of indirection from 'identifier2'
+      '/we4053', # one void operand for '?:'
+      '/we4062', # enumerator 'identifier' in switch of enum 'enumeration' is not handled
+      '/we4098', # 'function' : void function returning a value
+      '/we4101', # 'identifier' : unreferenced local variable
+      '/we4189', # 'identifier' : local variable is initialized but not referenced
+    ])
+  endif
+  add_project_arguments(msvc_args, language: ['c', 'cpp'])
   # Disable SAFESEH with MSVC for plugins and libs that use external deps that
   # are built with MinGW
   noseh_link_args = ['/SAFESEH:NO']
@@ -66,23 +95,22 @@ if cc.has_link_argument('-Wl,-Bsymbolic-functions')
   add_project_link_arguments('-Wl,-Bsymbolic-functions', language : 'c')
 endif
 
+# glib doesn't support unloading, which means that unloading and reloading
+# any library that registers static types will fail
+if cc.has_link_argument('-Wl,-z,nodelete')
+  add_project_link_arguments('-Wl,-z,nodelete', language: 'c')
+endif
+
 core_conf = configuration_data()
+core_conf.set('ENABLE_NLS', 1)
 
 # Symbol visibility
-if cc.get_id() == 'msvc'
-  export_define = '__declspec(dllexport) extern'
-elif cc.has_argument('-fvisibility=hidden')
+if cc.has_argument('-fvisibility=hidden')
   add_project_arguments('-fvisibility=hidden', language: 'c')
   if have_objc
     add_project_arguments('-fvisibility=hidden', language: 'objc')
   endif
-  export_define = 'extern __attribute__ ((visibility ("default")))'
-else
-  export_define = 'extern'
 endif
-
-# Passing this through the command line would be too messy
-core_conf.set('GST_API_EXPORT', export_define)
 
 # Disable strict aliasing
 if cc.has_argument('-fno-strict-aliasing')
@@ -221,7 +249,6 @@ warning_flags = [
 
 warning_c_flags = [
   '-Wmissing-prototypes',
-  '-Wdeclaration-after-statement',
 ]
 
 warning_cxx_flags = [
@@ -280,19 +307,13 @@ endif
 
 # X11 checks are for sys/ and tests/
 x11_dep = dependency('x11', required : get_option('x11'))
-# GLib checks are for the entire project
-# Almost everything that uses glib also uses gobject
-glib_deps = [dependency('glib-2.0', version : glib_req, fallback: ['glib', 'libglib_dep']),
-             dependency('gobject-2.0', fallback: ['glib', 'libgobject_dep'])]
 # GIO is used by the GIO plugin, and by the TCP, SDP, and RTSP plugins
-gio_dep = dependency('gio-2.0', fallback: ['glib', 'libgio_dep'])
+gio_dep = dependency('gio-2.0', version: glib_req)
 giounix_dep = dependency('', required: false)
 if host_system != 'windows'
-  giounix_dep = dependency('gio-unix-2.0', version : glib_req,
-                           fallback: ['glib', 'libgiounix_dep'])
+  giounix_dep = dependency('gio-unix-2.0')
 endif
-gmodule_dep = dependency('gmodule-no-export-2.0',
-                         fallback: ['glib', 'libgmodule_dep'])
+gmodule_dep = dependency('gmodule-no-export-2.0')
 
 # some of the examples can use gdk-pixbuf and GTK+3
 gdk_pixbuf_dep = dependency('gdk-pixbuf-2.0', required : get_option('examples'))
@@ -315,11 +336,11 @@ core_conf.set('HAVE_GIO_UNIX_2_0', giounix_dep.found())
 
 if gio_dep.type_name() == 'pkgconfig'
     core_conf.set_quoted('GIO_MODULE_DIR',
-        gio_dep.get_pkgconfig_variable('giomoduledir'))
+        gio_dep.get_variable('giomoduledir'))
     core_conf.set_quoted('GIO_LIBDIR',
-        gio_dep.get_pkgconfig_variable('libdir'))
+        gio_dep.get_variable('libdir'))
     core_conf.set_quoted('GIO_PREFIX',
-        gio_dep.get_pkgconfig_variable('prefix'))
+        gio_dep.get_variable('prefix'))
 else
     core_conf.set_quoted('GIO_MODULE_DIR', join_paths(get_option('prefix'),
       get_option('libdir'), 'gio/modules'))
@@ -431,23 +452,56 @@ if get_option('default_library') == 'shared'
   plugins_pkgconfig_install_dir = disabler()
 endif
 
+pkgconfig_variables = [
+  'exec_prefix=${prefix}',
+  'toolsdir=${exec_prefix}/bin',
+  'pluginsdir=${libdir}/gstreamer-1.0',
+  'girdir=${datadir}/gir-1.0',
+  'typelibdir=${libdir}/girepository-1.0',
+  'pluginscannerdir=${libexecdir}/gstreamer-1.0'
+]
+pkgconfig_subdirs = ['gstreamer-1.0']
+
+meson_pkg_config_file_fixup_script = find_program('scripts/meson-pkg-config-file-fixup.py')
+
 python3 = import('python').find_installation()
 subdir('gst-libs')
 subdir('gst')
 subdir('ext')
 subdir('sys')
-if not get_option('tools').disabled()
-  subdir('tools')
-endif
+subdir('tools')
 subdir('tests')
-subdir('pkgconfig')
+
 # xgettext is optional (on Windows for instance)
 if find_program('xgettext', required : get_option('nls')).found()
-  core_conf.set('ENABLE_NLS', 1)
   subdir('po')
 endif
 subdir('docs')
 subdir('scripts')
+
+base_libraries = ['allocators', 'app', 'audio', 'fft', 'pbutils', 'riff', 'rtp', 'rtsp', 'sdp', 'tag', 'video']
+if build_gstgl
+  core_conf.set('HAVE_GL', 1)
+  base_libraries += 'gl'
+endif
+
+pkgconfig_plugins_base_libs_variables = [
+  'libraries=' + ' '.join(base_libraries),
+]
+
+pkgconfig.generate(
+  libraries : [gst_dep],
+  variables : pkgconfig_variables + pkgconfig_plugins_base_libs_variables,
+  uninstalled_variables : pkgconfig_plugins_base_libs_variables,
+  subdirs : pkgconfig_subdirs,
+  name : 'gstreamer-plugins-base-1.0',
+  description : 'Streaming media framework, base plugins libraries',
+)
+
+# Desperate times, desperate measures... fix up escaping of our variables
+run_command(meson_pkg_config_file_fixup_script,
+  'gstreamer-plugins-base-1.0', 'libraries',
+  check: true)
 
 if have_orcc
   update_orc_dist_files = find_program('scripts/update-orc-dist-files.py')
@@ -467,7 +521,7 @@ if have_orcc
     ]
   endforeach
 
-  if meson.version().version_compare('>= 0.52')
+  if orc_update_targets.length() > 0
     update_orc_dist_target = alias_target('update-orc-dist', orc_update_targets)
   endif
 endif
@@ -475,33 +529,35 @@ endif
 # Set release date
 if gst_version_nano == 0
   extract_release_date = find_program('scripts/extract-release-date-from-doap-file.py')
-  run_result = run_command(extract_release_date, gst_version, files('gst-plugins-base.doap'))
-  if run_result.returncode() == 0
-    release_date = run_result.stdout().strip()
-    core_conf.set_quoted('GST_PACKAGE_RELEASE_DATETIME', release_date)
-    message('Package release date: ' + release_date)
-  else
-    # Error out if our release can't be found in the .doap file
-    error(run_result.stderr())
-  endif
+  run_result = run_command(extract_release_date, gst_version, files('gst-plugins-base.doap'), check: true)
+  release_date = run_result.stdout().strip()
+  core_conf.set_quoted('GST_PACKAGE_RELEASE_DATETIME', release_date)
+  message('Package release date: ' + release_date)
+endif
+
+if gio_dep.version().version_compare('< 2.67.4')
+  core_conf.set('g_memdup2(ptr,sz)', '(G_LIKELY(((guint64)(sz)) < G_MAXUINT)) ? g_memdup(ptr,sz) : (g_abort(),NULL)')
 endif
 
 # Use core_conf after all subdirs have set values
 configure_file(output : 'config.h', configuration : core_conf)
 
-run_command(python3, '-c', 'import shutil; shutil.copy("hooks/pre-commit.hook", ".git/hooks/pre-commit")')
+meson.add_dist_script('scripts/gen-changelog.py', meson.project_name(), '1.20.0', meson.project_version())
 
-if meson.version().version_compare('>= 0.54')
-  plugin_names = []
-  foreach plugin: plugins
-    # FIXME: Use str.subtring() when we can depend on Meson 0.56
-    split = plugin.name().split('gst')
-    if split.length() == 2
-      plugin_names += [split[1]]
-    else
-      warning('Need substring API in meson >= 0.56 to properly parse plugin name: ' + plugin.name())
-      plugin_names += [plugin.name()]
-    endif
-  endforeach
-  summary({'Plugins':plugin_names}, list_sep: ', ')
-endif
+plugin_names = []
+gst_plugins = []
+foreach plugin: plugins
+  pkgconfig.generate(plugin, install_dir: plugins_pkgconfig_install_dir)
+  dep = declare_dependency(link_with: plugin, variables: {'full_path': plugin.full_path()})
+  meson.override_dependency(plugin.name(), dep)
+  gst_plugins += [dep]
+  if plugin.name().startswith('gst')
+    plugin_names += [plugin.name().substring(3)]
+  else
+    plugin_names += [plugin.name()]
+  endif
+endforeach
+
+summary({
+    'Plugins': plugin_names,
+}, list_sep: ', ')

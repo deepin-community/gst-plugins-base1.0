@@ -1,20 +1,21 @@
 # translation of gst-plugins-base.po to Dutch
 # This file is put in the public domain.
 #
-# Freek de Kruijf <f.de.kruijf@gmail.com>, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016.
+# Freek de Kruijf <f.de.kruijf@gmail.com>, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2022.
 msgid ""
 msgstr ""
-"Project-Id-Version: gst-plugins-base 1.7.2\n"
-"Report-Msgid-Bugs-To: http://bugzilla.gnome.org/\n"
-"POT-Creation-Date: 2019-02-26 11:43+0000\n"
-"PO-Revision-Date: 2016-02-20 16:39+0100\n"
+"Project-Id-Version: gst-plugins-base 1.20.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2023-02-22 11:52+0000\n"
+"PO-Revision-Date: 2022-02-08 14:01+0100\n"
 "Last-Translator: Freek de Kruijf <f.de.kruijf@gmail.com>\n"
 "Language-Team: Dutch <vertaling@vrijschrift.org>\n"
 "Language: nl\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Lokalize 1.5\n"
+"X-Bugs: Report translation errors to the Language-Team address.\n"
+"X-Generator: Lokalize 21.12.2\n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
 
 msgid "Could not open device for playback in mono mode."
@@ -74,30 +75,17 @@ msgstr "Kan geen seek doen op CD."
 msgid "Could not read CD."
 msgstr "Kan niet lezen van CD."
 
-msgid "failed to draw pattern"
-msgstr ""
-
-msgid "A GL error occurred"
-msgstr ""
-
-msgid "format wasn't negotiated before get function"
-msgstr ""
-
-#, c-format
-msgid "Missing element '%s' - check your GStreamer installation."
-msgstr "Ontbrekend element '%s' - controleer de instalatie van uw GStreamer."
-
 msgid "Could not determine type of stream"
 msgstr "Kan het type stream niet bepalen"
 
 msgid "This appears to be a text file"
 msgstr "Dit lijkt een tekstbestand te zijn"
 
-msgid "Could not create \"uridecodebin\" element."
-msgstr "Kon element \"uridecodebin\" niet aanmaken."
+#, c-format
+msgid "Missing element '%s' - check your GStreamer installation."
+msgstr "Ontbrekend element '%s' - controleer de instalatie van uw GStreamer."
 
-#, fuzzy
-msgid "Could not create \"uridecodebin3\" element."
+msgid "Could not create \"uridecodebin\" element."
 msgstr "Kon element \"uridecodebin\" niet aanmaken."
 
 #, c-format
@@ -163,7 +151,15 @@ msgstr "Deze stroom kan nog niet afgespeeld worden."
 msgid "No URI handler implemented for \"%s\"."
 msgstr "Geen URI-handler geïmplementeerd voor \"%s\"."
 
+#, fuzzy
+msgid "Source element can't be prepared"
+msgstr "Bronelement is ongeldig."
+
 msgid "Source element is invalid."
+msgstr "Bronelement is ongeldig."
+
+#, fuzzy
+msgid "Source element has no pads."
 msgstr "Bronelement is ongeldig."
 
 #, c-format
@@ -175,6 +171,15 @@ msgstr "Kan geluid niet snel genoeg opslaan"
 
 msgid "This CD has no audio tracks"
 msgstr "Deze CD heeft geen audiotracks"
+
+msgid "failed to draw pattern"
+msgstr "patroon tekenen is mislukt"
+
+msgid "A GL error occurred"
+msgstr "Er deed zich een GL-fout voor"
+
+msgid "format wasn't negotiated before get function"
+msgstr "formaat was niet onderhandeld vóór functie get"
 
 msgid "ID3 tag"
 msgstr "ID3-tag"
@@ -209,9 +214,11 @@ msgstr "Lossless MSZH"
 msgid "Run-length encoding"
 msgstr "Run-length encoding (RLE)"
 
+#. subtitle formats with static descriptions
 msgid "Timed Text"
 msgstr "Van tijd voorziene tekst"
 
+#. FIXME: add variant field to typefinder?
 msgid "Subtitle"
 msgstr "Ondertitel"
 
@@ -231,17 +238,16 @@ msgid "TMPlayer subtitle format"
 msgstr "TMPlayer ondertitelformaat"
 
 msgid "CEA 608 Closed Caption"
-msgstr ""
+msgstr "CEA 608 gesloten opschrift"
 
 msgid "CEA 708 Closed Caption"
-msgstr ""
+msgstr "CEA 708 gesloten opschrift"
 
 msgid "Kate subtitle format"
 msgstr "Kate ondertitelformaat"
 
-#, fuzzy
 msgid "WebVTT subtitle format"
-msgstr "Kate ondertitelformaat"
+msgstr "WebVTT ondertitelformaat"
 
 msgid "Uncompressed video"
 msgstr "Niet-gecomprimeerde video"
@@ -292,6 +298,9 @@ msgstr "Real Time Streaming Protocol (RTSP)-bron"
 msgid "Microsoft Media Server (MMS) protocol source"
 msgstr "Microsoft Media Server (MMS) protocol-bron"
 
+#. TODO: find out how to add a comment for translators to the source code
+#. * (and tell them to make the first letter uppercase below if they move
+#. * the protocol to the middle or end of the string)
 #, c-format
 msgid "%s protocol source"
 msgstr "%s protocol-bron"
@@ -355,6 +364,8 @@ msgstr "Onbekend decoder-element"
 msgid "Unknown encoder element"
 msgstr "Onbekend encoder-element"
 
+#. we should really never get here, but we better still return
+#. * something if we do
 msgid "Plugin or element of unknown type"
 msgstr "Plugin of element van onbekend type"
 
@@ -385,11 +396,29 @@ msgstr "album-artiest-ID"
 msgid "MusicBrainz album artist ID"
 msgstr "MusicBrainz album-artiest-ID"
 
+msgid "release group ID"
+msgstr "vrijgave groep-ID"
+
+msgid "MusicBrainz release group ID"
+msgstr "vrijgave groep-ID van MusicBrainz"
+
+msgid "release track ID"
+msgstr "vrijgave track-ID"
+
+msgid "MusicBrainz release track ID"
+msgstr "vrijgave track-ID van MusicBrainz"
+
 msgid "track TRM ID"
 msgstr "track-TRM-ID"
 
 msgid "MusicBrainz TRM ID"
 msgstr "MusicBrainz TRM-ID"
+
+msgid "AcoustID ID"
+msgstr "AcoustID-ID"
+
+msgid "AcoustID fingerprint (chromaprint)"
+msgstr "AcoustID vingerafdruk (chromaprint)"
 
 msgid "capturing shutter speed"
 msgstr "sluitersnelheid bij het maken"
@@ -408,17 +437,16 @@ msgstr "brandpuntsafstand bij maken"
 
 msgid "Focal length of the lens used capturing the image, in mm"
 msgstr ""
-"Ge bruikte brandpuntsafstand van de lens bij het maken van de foto, in mm"
+"Gebruikte brandpuntsafstand van de lens bij het maken van de foto, in mm"
 
-#, fuzzy
 msgid "capturing 35 mm equivalent focal length"
-msgstr "brandpuntsafstand bij maken"
+msgstr "opnemen met 35 mm equivalente brandpuntsafstand"
 
-#, fuzzy
 msgid ""
 "35 mm equivalent focal length of the lens used capturing the image, in mm"
 msgstr ""
-"Ge bruikte brandpuntsafstand van de lens bij het maken van de foto, in mm"
+"35 mm equivalente brandpuntsafstand van de lens bij het maken van de "
+"afbeelding, in mm"
 
 msgid "capturing digital zoom ratio"
 msgstr "digitale zoom-verhouding bij het maken"
@@ -553,9 +581,18 @@ msgstr ""
 "Niet beëindigen na het tonen van de initiële lijst apparaten, maar wacht op "
 "toegevoegde/verwijderde apparaten."
 
+msgid "Include devices from hidden device providers."
+msgstr "Apparaten meenemen van verborgen leveranciers van apparaten."
+
 #, c-format
 msgid "Volume: %.0f%%"
 msgstr "Volume: %.0f%%"
+
+msgid "Mute: on"
+msgstr "Dempen: aan"
+
+msgid "Mute: off"
+msgstr "Dempen: uit"
 
 msgid "Buffering..."
 msgstr "In buffer opslaan..."
@@ -598,13 +635,13 @@ msgid "quit"
 msgstr "stoppen"
 
 msgid "> or n"
-msgstr ""
+msgstr "> of n"
 
 msgid "play next"
 msgstr "volgende afspelen"
 
 msgid "< or b"
-msgstr ""
+msgstr "< of b"
 
 msgid "play previous"
 msgstr "vorige afspelen"
@@ -621,6 +658,9 @@ msgstr "volume omhoog"
 msgid "volume down"
 msgstr "volume omlaag"
 
+msgid "toggle audio mute on/off"
+msgstr "audio dempen aan/uit omschakelen"
+
 msgid "increase playback rate"
 msgstr "afspeelsnelheid verhogen"
 
@@ -633,13 +673,16 @@ msgstr "afspeelrichting wijzigen"
 msgid "enable/disable trick modes"
 msgstr "truc-modi in-/uitschakelen"
 
-msgid "change audio track"
+#, fuzzy
+msgid "change to previous/next audio track"
 msgstr "audiotrack wijzigen"
 
-msgid "change video track"
+#, fuzzy
+msgid "change to previous/next video track"
 msgstr "videotrack wijzigen"
 
-msgid "change subtitle track"
+#, fuzzy
+msgid "change to previous/next subtitle track"
 msgstr "ondertiteltrack wijzigen"
 
 msgid "seek to beginning"
@@ -650,6 +693,10 @@ msgstr "sneltoetsen tonen"
 
 msgid "Interactive mode - keyboard controls:"
 msgstr "Interactieve modus - besturing op toetsenbord"
+
+#, c-format
+msgid "Use Windows high-resolution clock, precision: %u ms\n"
+msgstr "Hoge resolutie klok van Windows gebruiken, precisie: %u ms\n"
 
 msgid "Output status information and property notifications"
 msgstr "Uitvoerstatusinformatie en meldingen over eigenschappen"
@@ -667,6 +714,9 @@ msgstr "Te gebruiken audio-sink (standaard is autoaudiosink)"
 msgid "Enable gapless playback"
 msgstr "Afspelen activeren zonder gaten"
 
+msgid "Enable instantaneous uri changes (only with playbin3)"
+msgstr ""
+
 msgid "Shuffle playlist"
 msgstr "Afspeellijst in willekeurige volgorde"
 
@@ -676,16 +726,36 @@ msgstr "Interactieve besturing via toetsenbord uitschakelen"
 msgid "Volume"
 msgstr "Volume"
 
+msgid "Start position in seconds."
+msgstr "Startpositie in seconden."
+
+msgid "Enable accurate seeking"
+msgstr ""
+
 msgid "Playlist file containing input media files"
 msgstr "Afspeellijstbestand met mediabestanden voor invoer"
+
+msgid "Use the experimental instant-rate-change flag when changing rate"
+msgstr ""
+"De experimentele vlag instant-rate-change gebruiken bij wijzigen van snelheid"
 
 msgid "Do not print any output (apart from errors)"
 msgstr "Geen uitvoer afdrukken (los van fouten)"
 
-msgid "Use playbin3 pipeline"
-msgstr ""
+#, fuzzy
+msgid ""
+"Use playbin3 pipeline (default varies depending on 'USE_PLAYBIN' env "
+"variable)"
+msgstr "(standaard varieert afhankelijk van omgevingsvariabele 'USE_PLAYBIN')"
 
-msgid "(default varies depending on 'USE_PLAYBIN' env variable)"
+msgid ""
+"Keep showing the last frame on EOS until quit or playlist change command "
+"(gapless is ignored)"
+msgstr ""
+"Het laatste frame bij EOS blijven tonen tot commando afsluiten of "
+"afspeellijst wijzigen (zonder gat wordt genegeerd)"
+
+msgid "Do not print current position of pipeline"
 msgstr ""
 
 #, c-format
@@ -698,13 +768,11 @@ msgstr "U moet minstens één bestandsnaam of URI leveren om af te spelen."
 msgid "Press 'k' to see a list of keyboard shortcuts.\n"
 msgstr "Druk op 'k' om een lijst met sneltoetsen te zien.\n"
 
-#, fuzzy
-#~ msgid "Could not create \"decodebin3\" element."
-#~ msgstr "Kon element \"uridecodebin\" niet aanmaken."
+#~ msgid "Could not create \"uridecodebin3\" element."
+#~ msgstr "Kon element \"uridecodebin3\" niet aanmaken."
 
-#, fuzzy
-#~ msgid "Could not create \"urisourcebin\" element."
-#~ msgstr "Kon element \"uridecodebin\" niet aanmaken."
+#~ msgid "Use playbin3 pipeline"
+#~ msgstr "Pijplijn playbin3 gebruiken"
 
 #~ msgid "Internal data stream error."
 #~ msgstr "Interne fout in gegevensstroom."

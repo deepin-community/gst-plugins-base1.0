@@ -154,6 +154,10 @@ GST_STATIC_PAD_TEMPLATE ("src",
 
 #define gst_audio_test_src_parent_class parent_class
 G_DEFINE_TYPE (GstAudioTestSrc, gst_audio_test_src, GST_TYPE_BASE_SRC);
+GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (audiotestsrc, "audiotestsrc",
+    GST_RANK_NONE, GST_TYPE_AUDIO_TEST_SRC,
+    GST_DEBUG_CATEGORY_INIT (audio_test_src_debug, "audiotestsrc", 0,
+        "Audio Test Source"));
 
 #define GST_TYPE_AUDIO_TEST_SRC_WAVE (gst_audiostestsrc_wave_get_type())
 static GType
@@ -378,9 +382,11 @@ gst_audio_test_src_fixate (GstBaseSrc * bsrc, GstCaps * caps)
 
   if (gst_structure_get_int (structure, "channels", &channels) && channels > 2) {
     if (!gst_structure_has_field_typed (structure, "channel-mask",
-            GST_TYPE_BITMASK))
-      gst_structure_set (structure, "channel-mask", GST_TYPE_BITMASK, 0ULL,
+            GST_TYPE_BITMASK)) {
+      guint64 mask = gst_audio_channel_get_fallback_mask (channels);
+      gst_structure_set (structure, "channel-mask", GST_TYPE_BITMASK, mask,
           NULL);
+    }
   }
 
   caps = GST_BASE_SRC_CLASS (parent_class)->fixate (bsrc, caps);
@@ -947,6 +953,10 @@ gst_audio_test_src_create_tick_##type (GstAudioTestSrc * src, g##type * samples)
       src->accumulator = 0; \
       src->tick_counter++; \
       volscale = calc_scaled_tick_volume (src, scale); \
+      for (c = 0; c < channels; ++c) { \
+        *ptr = 0; \
+        ptr += channel_step; \
+      } \
     } else if (samplemod < num_nonzero_samples)  { \
       gdouble ramp; \
       if (num_ramp_samples > 0) { \
@@ -1679,11 +1689,7 @@ gst_audio_test_src_get_property (GObject * object, guint prop_id,
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
-  GST_DEBUG_CATEGORY_INIT (audio_test_src_debug, "audiotestsrc", 0,
-      "Audio Test Source");
-
-  return gst_element_register (plugin, "audiotestsrc",
-      GST_RANK_NONE, GST_TYPE_AUDIO_TEST_SRC);
+  return GST_ELEMENT_REGISTER (audiotestsrc, plugin);
 }
 
 GST_PLUGIN_DEFINE (GST_VERSION_MAJOR,

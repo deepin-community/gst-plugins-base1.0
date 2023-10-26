@@ -40,10 +40,11 @@
 #endif
 
 #include <string.h>
-#include <gst/gst-i18n-plugin.h>
+#include <glib/gi18n-lib.h>
 #include <gst/tag/tag.h>
 #include <gst/audio/audio.h>
 
+#include "gstoggelements.h"
 #include "gstoggdemux.h"
 
 #define CHUNKSIZE (8500)        /* this is out of vorbisfile */
@@ -86,7 +87,7 @@ _ogg_packet_copy (const ogg_packet * packet)
   ogg_packet *ret = g_slice_new (ogg_packet);
 
   *ret = *packet;
-  ret->packet = g_memdup (packet->packet, packet->bytes);
+  ret->packet = g_memdup2 (packet->packet, packet->bytes);
 
   return ret;
 }
@@ -104,9 +105,9 @@ gst_ogg_page_copy (ogg_page * page)
   ogg_page *p = g_slice_new (ogg_page);
 
   /* make a copy of the page */
-  p->header = g_memdup (page->header, page->header_len);
+  p->header = g_memdup2 (page->header, page->header_len);
   p->header_len = page->header_len;
-  p->body = g_memdup (page->body, page->body_len);
+  p->body = g_memdup2 (page->body, page->body_len);
   p->body_len = page->body_len;
 
   return p;
@@ -579,6 +580,9 @@ gst_ogg_demux_chain_peer (GstOggPad * pad, ogg_packet * packet,
     if ((packet->bytes >= 7 && memcmp (packet->packet, "OVP80\2 ", 7) == 0) ||
         packet->b_o_s ||
         (packet->bytes >= 5 && memcmp (packet->packet, "OVP80", 5) == 0)) {
+      /* Request the first packet being pushed downstream to have the header
+         flag set, unblocking the keyframe_waiter_probe in decodebin3. */
+      pad->need_header_flag = TRUE;
       /* We don't push header packets for VP8 */
       goto done;
     }
@@ -817,9 +821,11 @@ gst_ogg_demux_chain_peer (GstOggPad * pad, ogg_packet * packet,
   if (delta_unit)
     GST_BUFFER_FLAG_SET (buf, GST_BUFFER_FLAG_DELTA_UNIT);
 
-  /* set header flag for buffers that are also in the streamheaders */
-  if (is_header)
+  /* set header flag for buffers that are also in the streamheaders or when explicitely requested (VP8). */
+  if (is_header || pad->need_header_flag) {
+    pad->need_header_flag = FALSE;
     GST_BUFFER_FLAG_SET (buf, GST_BUFFER_FLAG_HEADER);
+  }
 
   if (packet->packet != NULL) {
     /* copy packet in buffer */
@@ -1610,6 +1616,10 @@ gst_ogg_demux_seek_back_after_push_duration_check_unlock (GstOggDemux * ogg)
     event = gst_event_new_seek (1.0, GST_FORMAT_BYTES,
         GST_SEEK_FLAG_ACCURATE | GST_SEEK_FLAG_FLUSH,
         GST_SEEK_TYPE_SET, 1, GST_SEEK_TYPE_SET, GST_CLOCK_TIME_NONE);
+    /* drop everything until this seek event completed.  We can't wait until the
+     * seek thread sets this because there would be race between receiving e.g.
+     * an EOS or any data and the seek thread actually picking up the seek. */
+    ogg->seek_event_drop_till = gst_event_get_seqnum (event);
   }
   gst_event_replace (&ogg->seek_event, event);
   gst_event_unref (event);
@@ -2291,9 +2301,12 @@ static GstStateChangeReturn gst_ogg_demux_change_state (GstElement * element,
     GstStateChange transition);
 
 static void gst_ogg_print (GstOggDemux * demux);
+static gboolean gst_ogg_demux_plugin_init (GstPlugin * plugin);
 
 #define gst_ogg_demux_parent_class parent_class
 G_DEFINE_TYPE (GstOggDemux, gst_ogg_demux, GST_TYPE_ELEMENT);
+GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (oggdemux, "oggdemux", GST_RANK_PRIMARY,
+    GST_TYPE_OGG_DEMUX, gst_ogg_demux_plugin_init (plugin));
 
 static void
 gst_ogg_demux_class_init (GstOggDemuxClass * klass)
@@ -2506,6 +2519,7 @@ gst_ogg_demux_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
       break;
     case GST_EVENT_EOS:
     {
+      gboolean drop = FALSE;
       GST_DEBUG_OBJECT (ogg, "got an EOS event");
       GST_PUSH_LOCK (ogg);
       if (ogg->push_state == PUSH_DURATION) {
@@ -2515,10 +2529,23 @@ gst_ogg_demux_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
           GST_DEBUG_OBJECT (ogg, "Error seeking back after duration check: %d",
               res);
         }
+        gst_event_unref (event);
+        res = TRUE;
         break;
-      } else
+      } else {
+        if (ogg->seek_event_drop_till > 0) {
+          GST_DEBUG_OBJECT (ogg, "Dropping EOS (seqnum:%u) because we have "
+              "a pending seek (seqnum:%u)", gst_event_get_seqnum (event),
+              ogg->seek_event_drop_till);
+          drop = TRUE;
+        }
         GST_PUSH_UNLOCK (ogg);
-      res = gst_ogg_demux_send_event (ogg, event);
+        res = TRUE;
+      }
+      if (!drop)
+        res = gst_ogg_demux_send_event (ogg, event);
+      else
+        gst_event_unref (event);
       if (ogg->current_chain == NULL) {
         GST_WARNING_OBJECT (ogg,
             "EOS while trying to retrieve chain, seeking disabled");
@@ -3719,6 +3746,7 @@ gst_ogg_demux_get_duration_push (GstOggDemux * ogg, int flags)
   sevent = gst_event_new_seek (1.0, GST_FORMAT_BYTES, flags, GST_SEEK_TYPE_SET,
       position, GST_SEEK_TYPE_SET, ogg->push_byte_length - 1);
   gst_event_replace (&ogg->seek_event, sevent);
+  ogg->seek_event_drop_till = gst_event_get_seqnum (sevent);
   gst_event_unref (sevent);
   g_mutex_lock (&ogg->seek_event_mutex);
   g_cond_broadcast (&ogg->seek_event_cond);
@@ -5242,6 +5270,7 @@ gst_ogg_demux_change_state (GstElement * element, GstStateChange transition)
       gst_ogg_demux_clear_chains (ogg);
       GST_OBJECT_LOCK (ogg);
       ogg->running = FALSE;
+      gst_event_replace (&ogg->seek_event, NULL);
       GST_OBJECT_UNLOCK (ogg);
       break;
     case GST_STATE_CHANGE_READY_TO_NULL:
@@ -5253,7 +5282,7 @@ gst_ogg_demux_change_state (GstElement * element, GstStateChange transition)
   return result;
 }
 
-gboolean
+static gboolean
 gst_ogg_demux_plugin_init (GstPlugin * plugin)
 {
   GST_DEBUG_CATEGORY_INIT (gst_ogg_demux_debug, "oggdemux", 0, "ogg demuxer");
@@ -5267,8 +5296,7 @@ gst_ogg_demux_plugin_init (GstPlugin * plugin)
   bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
 #endif
 
-  return gst_element_register (plugin, "oggdemux", GST_RANK_PRIMARY,
-      GST_TYPE_OGG_DEMUX);
+  return TRUE;
 }
 
 /* prints all info about the element */

@@ -336,6 +336,10 @@ shader_fade_and_move_horiz_out (GstAudioVisualizer * scope,
     }
     d += ds;
   }
+
+  /* rewind one stride */
+  d -= ds;
+
   /* move lower half down */
   for (j = 0; j < height / 2; j++) {
     d += ds;
@@ -844,7 +848,7 @@ no_format:
 static gboolean
 gst_audio_visualizer_set_allocation (GstAudioVisualizer * scope,
     GstBufferPool * pool, GstAllocator * allocator,
-    GstAllocationParams * params, GstQuery * query)
+    const GstAllocationParams * params, GstQuery * query)
 {
   GstAllocator *oldalloc;
   GstBufferPool *oldpool;
@@ -1164,7 +1168,8 @@ gst_audio_visualizer_chain (GstPad * pad, GstObject * parent,
     if (!(adata = (gpointer) gst_adapter_map (scope->priv->adapter, sbpf)))
       break;
 
-    gst_video_frame_map (&outframe, &scope->vinfo, outbuf, GST_MAP_READWRITE);
+    gst_video_frame_map (&outframe, &scope->vinfo, outbuf,
+        GST_MAP_READWRITE | GST_VIDEO_FRAME_MAP_FLAG_NO_REF);
 
     if (scope->priv->shader) {
       gst_video_frame_copy (&outframe, &scope->priv->tempframe);

@@ -39,10 +39,8 @@
 #include "config.h"
 #endif
 
+#include "gstaudiomixerelements.h"
 #include "gstaudiointerleave.h"
-#include <gst/audio/audio.h>
-
-#include <string.h>
 
 #define GST_CAT_DEFAULT gst_audio_interleave_debug
 GST_DEBUG_CATEGORY_STATIC (GST_CAT_DEFAULT);
@@ -55,6 +53,8 @@ enum
 
 G_DEFINE_TYPE (GstAudioInterleavePad, gst_audio_interleave_pad,
     GST_TYPE_AUDIO_AGGREGATOR_PAD);
+GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (audiointerleave, "audiointerleave",
+    GST_RANK_NONE, GST_TYPE_AUDIO_INTERLEAVE, audiomixer_element_init (plugin));
 
 static void
 gst_audio_interleave_pad_get_property (GObject * object, guint prop_id,
@@ -582,7 +582,7 @@ gst_audio_interleave_class_init (GstAudioInterleaveClass * klass)
   aagg_class->aggregate_one_buffer = gst_audio_interleave_aggregate_one_buffer;
 
   /**
-   * GstInterleave:channel-positions
+   * GstAudioInterleave:channel-positions:
    *
    * Channel positions: This property controls the channel positions
    * that are used on the src caps. The number of elements should be
@@ -606,7 +606,7 @@ gst_audio_interleave_class_init (GstAudioInterleaveClass * klass)
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   /**
-   * GstInterleave:channel-positions-from-input
+   * GstAudioInterleave:channel-positions-from-input:
    *
    * Channel positions from input: If this property is set to %TRUE the channel
    * positions will be taken from the input caps if valid channel positions for

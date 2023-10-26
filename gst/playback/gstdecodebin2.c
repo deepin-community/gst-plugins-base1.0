@@ -92,14 +92,14 @@
 #include "config.h"
 #endif
 
-#include <gst/gst-i18n-plugin.h>
+#include <glib/gi18n-lib.h>
 
 #include <string.h>
 #include <gst/gst.h>
 #include <gst/pbutils/pbutils.h>
 
 #include "gstplay-enum.h"
-#include "gstplayback.h"
+#include "gstplaybackelements.h"
 #include "gstrawcaps.h"
 #include "gstplaybackutils.h"
 
@@ -239,16 +239,16 @@ enum
   LAST_SIGNAL
 };
 
-/* automatic sizes, while prerolling we buffer up to 2MB, we ignore time
+/* automatic sizes, while prerolling we buffer up to 8MB, we ignore time
  * and buffers in this case. */
-#define AUTO_PREROLL_SIZE_BYTES                  2 * 1024 * 1024
+#define AUTO_PREROLL_SIZE_BYTES                  8 * 1024 * 1024
 #define AUTO_PREROLL_SIZE_BUFFERS                0
 #define AUTO_PREROLL_NOT_SEEKABLE_SIZE_TIME      10 * GST_SECOND
 #define AUTO_PREROLL_SEEKABLE_SIZE_TIME          0
 
-/* when playing, keep a max of 2MB of data but try to keep the number of buffers
+/* when playing, keep a max of 8MB of data but try to keep the number of buffers
  * as low as possible (try to aim for 5 buffers) */
-#define AUTO_PLAY_SIZE_BYTES        2 * 1024 * 1024
+#define AUTO_PLAY_SIZE_BYTES        8 * 1024 * 1024
 #define AUTO_PLAY_SIZE_BUFFERS      5
 #define AUTO_PLAY_SIZE_TIME         0
 
@@ -584,37 +584,29 @@ static GstPadProbeReturn pad_event_cb (GstPad * pad, GstPadProbeInfo * info,
  * Standard GObject boilerplate *
  ********************************/
 
-static void gst_decode_bin_class_init (GstDecodeBinClass * klass);
-static void gst_decode_bin_init (GstDecodeBin * decode_bin);
 static void gst_decode_bin_dispose (GObject * object);
 static void gst_decode_bin_finalize (GObject * object);
 
-static GType
-gst_decode_bin_get_type (void)
-{
-  static GType gst_decode_bin_type = 0;
+/* Register some quarks here for the stream topology message */
+static GQuark topology_structure_name = 0;
+static GQuark topology_caps = 0;
+static GQuark topology_next = 0;
+static GQuark topology_pad = 0;
+static GQuark topology_element_srcpad = 0;
 
-  if (!gst_decode_bin_type) {
-    static const GTypeInfo gst_decode_bin_info = {
-      sizeof (GstDecodeBinClass),
-      NULL,
-      NULL,
-      (GClassInitFunc) gst_decode_bin_class_init,
-      NULL,
-      NULL,
-      sizeof (GstDecodeBin),
-      0,
-      (GInstanceInitFunc) gst_decode_bin_init,
-      NULL
-    };
+GType gst_decode_bin_get_type (void);
+G_DEFINE_TYPE (GstDecodeBin, gst_decode_bin, GST_TYPE_BIN);
+#define _do_init \
+    GST_DEBUG_CATEGORY_INIT (gst_decode_bin_debug, "decodebin", 0, "decoder bin");\
+    topology_structure_name = g_quark_from_static_string ("stream-topology"); \
+    topology_caps = g_quark_from_static_string ("caps");\
+    topology_next = g_quark_from_static_string ("next");\
+    topology_pad = g_quark_from_static_string ("pad");\
+    topology_element_srcpad = g_quark_from_static_string ("element-srcpad");\
+    playback_element_init (plugin);\
 
-    gst_decode_bin_type =
-        g_type_register_static (GST_TYPE_BIN, "GstDecodeBin",
-        &gst_decode_bin_info, 0);
-  }
-
-  return gst_decode_bin_type;
-}
+GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (decodebin, "decodebin", GST_RANK_NONE,
+    GST_TYPE_DECODE_BIN, _do_init);
 
 static gboolean
 _gst_boolean_accumulator (GSignalInvocationHint * ihint,
@@ -623,8 +615,7 @@ _gst_boolean_accumulator (GSignalInvocationHint * ihint,
   gboolean myboolean;
 
   myboolean = g_value_get_boolean (handler_return);
-  if (!(ihint->run_type & G_SIGNAL_RUN_CLEANUP))
-    g_value_set_boolean (return_accu, myboolean);
+  g_value_set_boolean (return_accu, myboolean);
 
   /* stop emission if FALSE */
   return myboolean;
@@ -640,8 +631,7 @@ _gst_boolean_or_accumulator (GSignalInvocationHint * ihint,
   myboolean = g_value_get_boolean (handler_return);
   retboolean = g_value_get_boolean (return_accu);
 
-  if (!(ihint->run_type & G_SIGNAL_RUN_CLEANUP))
-    g_value_set_boolean (return_accu, myboolean || retboolean);
+  g_value_set_boolean (return_accu, myboolean || retboolean);
 
   return TRUE;
 }
@@ -654,8 +644,7 @@ _gst_array_accumulator (GSignalInvocationHint * ihint,
   gpointer array;
 
   array = g_value_get_boxed (handler_return);
-  if (!(ihint->run_type & G_SIGNAL_RUN_CLEANUP))
-    g_value_set_boxed (return_accu, array);
+  g_value_set_boxed (return_accu, array);
 
   return FALSE;
 }
@@ -667,8 +656,7 @@ _gst_select_accumulator (GSignalInvocationHint * ihint,
   GstAutoplugSelectResult res;
 
   res = g_value_get_enum (handler_return);
-  if (!(ihint->run_type & G_SIGNAL_RUN_CLEANUP))
-    g_value_set_enum (return_accu, res);
+  g_value_set_enum (return_accu, res);
 
   /* Call the next handler in the chain (if any) when the current callback
    * returns TRY. This makes it possible to register separate autoplug-select
@@ -687,8 +675,7 @@ _gst_array_hasvalue_accumulator (GSignalInvocationHint * ihint,
   gpointer array;
 
   array = g_value_get_boxed (handler_return);
-  if (!(ihint->run_type & G_SIGNAL_RUN_CLEANUP))
-    g_value_set_boxed (return_accu, array);
+  g_value_set_boxed (return_accu, array);
 
   if (array != NULL)
     return FALSE;
@@ -1595,7 +1582,7 @@ analyze_new_pad (GstDecodeBin * dbin, GstElement * src, GstPad * pad,
     if (group && !g_list_find (group->children, chain)) {
       g_assert (new_chain != NULL);
       *new_chain = chain = gst_decode_chain_new (dbin, group, pad);
-      group->children = g_list_prepend (group->children, chain);
+      group->children = g_list_append (group->children, chain);
     }
     CHAIN_MUTEX_UNLOCK (oldchain);
     if (!group) {
@@ -1714,7 +1701,7 @@ analyze_new_pad (GstDecodeBin * dbin, GstElement * src, GstPad * pad,
   if (!dbin->expose_allstreams && gst_caps_is_fixed (caps)) {
     guint i;
     const GList *tmps;
-    gboolean dontuse = FALSE;
+    gboolean dontuse = FALSE, found_finals = FALSE;
 
     GST_DEBUG ("Checking if we can abort early");
 
@@ -1750,8 +1737,11 @@ analyze_new_pad (GstDecodeBin * dbin, GstElement * src, GstPad * pad,
               gst_decode_bin_signals[SIGNAL_AUTOPLUG_CONTINUE], 0, dpad, tcaps,
               &apcontinue);
 
-          /* If autoplug-continue returns TRUE and the caps are not final, don't use them */
-          if (apcontinue && !are_final_caps (dbin, tcaps))
+          /* If autoplug-continue returns TRUE and the caps are not final, and
+           * we haven't found any way to output finals yet, don't use them */
+          if (are_final_caps (dbin, tcaps))
+            found_finals = TRUE;
+          else if (apcontinue && !found_finals)
             dontuse = TRUE;
           gst_caps_unref (tcaps);
         }
@@ -3929,7 +3919,8 @@ gst_decode_group_control_demuxer_pad (GstDecodeGroup * group, GstPad * pad)
   if (G_UNLIKELY (!group->multiqueue))
     return NULL;
 
-  if (!(sinkpad = gst_element_get_request_pad (group->multiqueue, "sink_%u"))) {
+  if (!(sinkpad =
+          gst_element_request_pad_simple (group->multiqueue, "sink_%u"))) {
     GST_ERROR_OBJECT (dbin, "Couldn't get sinkpad from multiqueue");
     return NULL;
   }
@@ -4527,12 +4518,6 @@ _gst_element_get_linked_caps (GstElement * src, GstElement * sink,
   return caps;
 }
 
-static GQuark topology_structure_name = 0;
-static GQuark topology_caps = 0;
-static GQuark topology_next = 0;
-static GQuark topology_pad = 0;
-static GQuark topology_element_srcpad = 0;
-
 /* FIXME: Invent gst_structure_take_structure() to prevent all the
  * structure copying for nothing
  */
@@ -5030,7 +5015,7 @@ source_pad_event_probe (GstPad * pad, GstPadProbeInfo * info,
   GstDecodePad *dpad = user_data;
   gboolean res = TRUE;
 
-  GST_LOG_OBJECT (pad, "%s dpad:%p", GST_EVENT_TYPE_NAME (event), dpad);
+  GST_LOG_OBJECT (pad, "event %s", GST_EVENT_TYPE_NAME (event));
 
   if (GST_EVENT_TYPE (event) == GST_EVENT_EOS) {
     GST_DEBUG_OBJECT (pad, "we received EOS");
@@ -5177,8 +5162,8 @@ gst_decode_pad_query (GstPad * pad, GstObject * parent, GstQuery * query)
 
     ret = FALSE;
     GST_DEBUG_OBJECT (dpad->dbin,
-        "calling autoplug-query for %s (element %s): %" GST_PTR_FORMAT,
-        GST_PAD_NAME (dpad), GST_ELEMENT_NAME (delem->element), query);
+        "calling autoplug-query for %" GST_PTR_FORMAT " (element %s): %"
+        GST_PTR_FORMAT, dpad, GST_ELEMENT_NAME (delem->element), query);
     g_signal_emit (G_OBJECT (dpad->dbin),
         gst_decode_bin_signals[SIGNAL_AUTOPLUG_QUERY], 0, dpad, delem->element,
         query, &ret);
@@ -5703,20 +5688,4 @@ gst_decode_bin_remove_element (GstBin * bin, GstElement * element)
   g_mutex_unlock (&dbin->buffering_post_lock);
 
   return GST_BIN_CLASS (parent_class)->remove_element (bin, element);
-}
-
-gboolean
-gst_decode_bin_plugin_init (GstPlugin * plugin)
-{
-  GST_DEBUG_CATEGORY_INIT (gst_decode_bin_debug, "decodebin", 0, "decoder bin");
-
-  /* Register some quarks here for the stream topology message */
-  topology_structure_name = g_quark_from_static_string ("stream-topology");
-  topology_caps = g_quark_from_static_string ("caps");
-  topology_next = g_quark_from_static_string ("next");
-  topology_pad = g_quark_from_static_string ("pad");
-  topology_element_srcpad = g_quark_from_static_string ("element-srcpad");
-
-  return gst_element_register (plugin, "decodebin", GST_RANK_NONE,
-      GST_TYPE_DECODE_BIN);
 }

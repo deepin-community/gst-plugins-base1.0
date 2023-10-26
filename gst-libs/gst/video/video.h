@@ -89,6 +89,12 @@ typedef enum {
   GST_VIDEO_ORIENTATION_CUSTOM,
 } GstVideoOrientationMethod;
 
+/**
+ * GST_TYPE_VIDEO_ORIENTATION_METHOD:
+ *
+ * Since: 1.20
+ */
+
 /* metadata macros */
 /**
  * GST_META_TAG_VIDEO_STR:
@@ -143,6 +149,9 @@ GST_VIDEO_API
 gboolean       gst_video_guess_framerate (GstClockTime duration,
                                           gint * dest_n, gint * dest_d);
 
+GST_VIDEO_API
+gboolean       gst_video_is_common_aspect_ratio (gint width, gint height, gint par_n, gint par_d);
+
 /* convert/encode video sample from one format to another */
 
 typedef void (*GstVideoConvertSampleCallback) (GstSample * sample, GError *error, gpointer user_data);
@@ -161,28 +170,35 @@ GstSample *   gst_video_convert_sample       (GstSample     * sample,
                                               GstClockTime    timeout,
                                               GError       ** error);
 
+
+GST_VIDEO_API
+gboolean gst_video_orientation_from_tag (GstTagList * taglist,
+                                         GstVideoOrientationMethod * method);
+
 G_END_DECLS
 
 #include <gst/video/colorbalancechannel.h>
 #include <gst/video/colorbalance.h>
+#include <gst/video/gstvideoaffinetransformationmeta.h>
 #include <gst/video/gstvideoaggregator.h>
+#include <gst/video/gstvideocodecalphameta.h>
 #include <gst/video/gstvideodecoder.h>
 #include <gst/video/gstvideoencoder.h>
 #include <gst/video/gstvideofilter.h>
 #include <gst/video/gstvideometa.h>
 #include <gst/video/gstvideopool.h>
 #include <gst/video/gstvideosink.h>
+#include <gst/video/gstvideotimecode.h>
 #include <gst/video/gstvideoutils.h>
 #include <gst/video/navigation.h>
+#include <gst/video/video-anc.h>
 #include <gst/video/video-blend.h>
-#include <gst/video/video-event.h>
 #include <gst/video/videodirection.h>
+#include <gst/video/video-event.h>
+#include <gst/video/video-hdr.h>
 #include <gst/video/videoorientation.h>
 #include <gst/video/video-overlay-composition.h>
 #include <gst/video/videooverlay.h>
-#include <gst/video/gstvideotimecode.h>
-#include <gst/video/gstvideoaffinetransformationmeta.h>
-#include <gst/video/video-anc.h>
-#include <gst/video/video-hdr.h>
+#include <gst/video/video-sei.h>
 
 #endif /* __GST_VIDEO_H__ */

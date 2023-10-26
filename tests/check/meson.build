@@ -11,7 +11,7 @@ base_tests = [
   [ 'libs/baseaudiovisualizer.c' ],
   [ 'libs/discoverer.c' ],
   [ 'libs/fft.c' ],
-  [ 'libs/libsabi.c' ],
+  [ 'libs/libsabi.c', false, [ gstgl_dep, gstglx11_dep, gstglwayland_dep, gstglegl_dep ] ],
   [ 'libs/mikey.c' ],
   [ 'libs/navigation.c' ],
   [ 'libs/pbutils.c' ],
@@ -19,6 +19,7 @@ base_tests = [
   [ 'libs/rtp.c' ],
   [ 'libs/rtpbasedepayload.c' ],
   [ 'libs/rtpbasepayload.c' ],
+  [ 'libs/rtphdrext.c' ],
   [ 'libs/rtpmeta.c' ],
   [ 'libs/rtsp.c' ],
   [ 'libs/sdp.c' ],
@@ -29,28 +30,28 @@ base_tests = [
   [ 'libs/videodecoder.c' ],
   [ 'libs/videotimecode.c' ],
   [ 'libs/xmpwriter.c' ],
-  [ 'elements/adder.c' ],
-  [ 'elements/appsink.c' ],
-  [ 'elements/appsrc.c' ],
-  [ 'elements/audioconvert.c' ],
-  [ 'elements/audiointerleave.c' ],
-  [ 'elements/audiomixer.c', false, [ gst_controller_dep ] ],
-  [ 'elements/audiorate.c' ],
-  [ 'elements/audiotestsrc.c' ],
-  [ 'elements/audioresample.c' ],
-  [ 'elements/compositor.c' ],
-  [ 'elements/decodebin.c' ],
-  [ 'elements/overlaycomposition.c' ],
-  [ 'elements/playbin.c' ],
-  [ 'elements/playsink.c' ],
-  [ 'elements/streamsynchronizer.c' ],
-  [ 'elements/subparse.c' ],
-  [ 'elements/urisourcebin.c' ],
-  [ 'elements/videoconvert.c' ],
-  [ 'elements/videorate.c' ],
-  [ 'elements/videoscale.c' ],
-  [ 'elements/videotestsrc.c' ],
-  [ 'elements/volume.c', false, [ gst_controller_dep ] ],
+  [ 'elements/adder.c', get_option('adder').disabled()],
+  [ 'elements/appsink.c', get_option('app').disabled()],
+  [ 'elements/appsrc.c', get_option('app').disabled()],
+  [ 'elements/audioconvert.c', get_option('audioconvert').disabled()],
+  [ 'elements/audiointerleave.c', get_option('audiomixer').disabled()],
+  [ 'elements/audiomixer.c', get_option('audiomixer').disabled(), [ gst_controller_dep ] ],
+  [ 'elements/audiorate.c', get_option('audiorate').disabled()],
+  [ 'elements/audiotestsrc.c', get_option('audiotestsrc').disabled()],
+  [ 'elements/audioresample.c', get_option('audioresample').disabled()],
+  [ 'elements/compositor.c', get_option('compositor').disabled()],
+  [ 'elements/decodebin.c', get_option('playback').disabled()],
+  [ 'elements/overlaycomposition.c', get_option('overlaycomposition').disabled()],
+  [ 'elements/playbin.c', get_option('playback').disabled()],
+  [ 'elements/playsink.c', get_option('playback').disabled()],
+  [ 'elements/streamsynchronizer.c', get_option('playback').disabled()],
+  [ 'elements/subparse.c', get_option('subparse').disabled()],
+  [ 'elements/urisourcebin.c', get_option('playback').disabled()],
+  [ 'elements/videoconvert.c', get_option('videoconvertscale').disabled()],
+  [ 'elements/videorate.c', get_option('videorate').disabled()],
+  [ 'elements/videoscale.c', get_option('videoconvertscale').disabled()],
+  [ 'elements/videotestsrc.c', get_option('videotestsrc').disabled()],
+  [ 'elements/volume.c', get_option('volume').disabled(), [ gst_controller_dep ] ],
   [ 'generic/clock-selection.c' ],
   [ 'generic/states.c', false, [ gmodule_dep ] ],
   [ 'pipelines/simple-launch-lines.c' ],
@@ -86,18 +87,20 @@ endif
 # FIXME: Unstable on Windows
 if build_gstgl and host_machine.system() != 'windows'
   base_tests += [
+    [ 'libs/gstglapi.c', not build_gstgl, [gstgl_dep]],
     [ 'libs/gstglcolorconvert.c', not build_gstgl, [gstgl_dep, gstglproto_dep]],
     [ 'libs/gstglcontext.c', not build_gstgl, [gstgl_dep, gstglproto_dep]],
     [ 'libs/gstglfeature.c', not build_gstgl, [gstgl_dep, gstglproto_dep]],
     [ 'libs/gstglformat.c', not build_gstgl, [gstgl_dep, gstglproto_dep]],
-    [ 'libs/gstglheaders.c', not build_gstgl, [gstgl_dep]],
-    [ 'libs/gstglmatrix.c', not build_gstgl, [gstgl_dep, gstglproto_dep]],
+    [ 'libs/gstglheaders.c', not build_gstgl, [gstgl_dep, gstglx11_dep, gstglwayland_dep, gstglegl_dep]],
+    [ 'libs/gstglmatrix.c', not build_gstgl, [gstgl_dep]],
     [ 'libs/gstglmemory.c', not build_gstgl, [gstgl_dep, gstglproto_dep]],
     [ 'libs/gstglquery.c', not build_gstgl, [gstgl_dep, gstglproto_dep]],
     [ 'libs/gstglshader.c', not build_gstgl, [gstgl_dep, gstglproto_dep]],
     [ 'libs/gstglsl.c', not build_gstgl, [gstgl_dep, gstglproto_dep]],
     [ 'libs/gstglslstage.c', not build_gstgl, [gstgl_dep, gstglproto_dep]],
     [ 'libs/gstglupload.c', not build_gstgl, [gstgl_dep, gstglproto_dep]],
+    [ 'libs/gstglvideomixerelement.c', not build_gstgl, [gstgl_dep, gstglproto_dep]],
     [ 'elements/glimagesink.c', not build_gstgl, [gstgl_dep, gstglproto_dep]],
     [ 'elements/glbin.c', not build_gstgl ],
     [ 'pipelines/gl-launch-lines.c', not build_gstgl ],
@@ -128,9 +131,13 @@ if valgrind_dep.found()
   test_defines += ['-DHAVE_VALGRIND']
 endif
 
+if build_gstgl
+  test_defines += ['-DTEST_GST_GL_ABI_CHECK']
+endif
+
 test_deps = [gst_dep, gst_base_dep, gst_net_dep, gst_check_dep, audio_dep,
   video_dep, pbutils_dep, rtp_dep, rtsp_dep, tag_dep, allocators_dep, app_dep,
-  fft_dep, riff_dep, sdp_dep, gio_dep, valgrind_dep] + glib_deps
+  fft_dep, riff_dep, sdp_dep, gio_dep, valgrind_dep]
 
 foreach t : base_tests
   fname = t.get(0)
@@ -155,13 +162,13 @@ foreach t : base_tests
     )
 
     env = environment()
-    env.set('GST_PLUGIN_PATH_1_0', meson.build_root(), pluginsdirs)
+    env.set('GST_PLUGIN_PATH_1_0', meson.global_build_root(), pluginsdirs)
     env.set('GST_PLUGIN_SYSTEM_PATH_1_0', '')
     env.set('GST_STATE_IGNORE_ELEMENTS', 'cdio cdparanoiasrc libvisual_ alsasrc alsasink')
     env.set('CK_DEFAULT_TIMEOUT', '20')
     env.set('GST_TAG_LICENSE_TRANSLATIONS_DICT', join_paths(gst_tag_dir, 'license-translations.dict'))
     env.set('GST_PLUGIN_LOADING_WHITELIST', 'gstreamer',
-        'gst-plugins-base@' + meson.build_root())
+        'gst-plugins-base@' + meson.project_build_root())
     env.set('GST_REGISTRY', join_paths(meson.current_build_dir(), '@0@.registry'.format(test_name)))
     env.set('GST_PLUGIN_SCANNER_1_0', gst_plugin_scanner_path)
     test(test_name, exe, env: env, timeout: 3 * 60)
@@ -178,14 +185,14 @@ foreach group : [1, 2, 3, 4, 5, 6]
 
   # TODO Use env.copy when it is in meson
   env = environment()
-  env.set('GST_PLUGIN_PATH_1_0', meson.build_root(), pluginsdirs)
+  env.set('GST_PLUGIN_PATH_1_0', meson.global_build_root(), pluginsdirs)
   env.set('GST_PLUGIN_SYSTEM_PATH_1_0', '')
   env.set('GST_STATE_IGNORE_ELEMENTS', 'cdio cdparanoiasrc libvisual_ alsasrc alsasink')
   env.set('CK_DEFAULT_TIMEOUT', '20')
   env.set('GST_TAG_LICENSE_TRANSLATIONS_DICT', join_paths(gst_tag_dir, 'license-translations.dict'))
   env.set('GST_PLUGIN_LOADING_WHITELIST', 'gstreamer',
-      'gst-plugins-base@' + meson.build_root())
-  env.set('GST_REGISTRY', join_paths(meson.current_build_dir(), '@0@.registry'.format(test_name)))
+      'gst-plugins-base@' + meson.project_build_root())
+  env.set('GST_REGISTRY', join_paths(meson.current_build_dir(), '@0@.registry'.format(vscale_test_name)))
   env.set('GST_PLUGIN_SCANNER_1_0', gst_plugin_scanner_path)
 
   test(vscale_test_name, exe, env: env, timeout: 3 * 60)

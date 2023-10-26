@@ -88,6 +88,12 @@
 GST_DEBUG_CATEGORY_STATIC (audio_aggregator_debug);
 #define GST_CAT_DEFAULT audio_aggregator_debug
 
+enum
+{
+  PROP_PAD_0,
+  PROP_PAD_QOS_MESSAGES,
+};
+
 struct _GstAudioAggregatorPadPrivate
 {
   /* All members are protected by the pad object lock */
@@ -113,6 +119,11 @@ struct _GstAudioAggregatorPadPrivate
 
   /* A new unhandled segment event has been received */
   gboolean new_segment;
+
+  guint64 processed;            /* Number of samples processed since the element came out of READY */
+  guint64 dropped;              /* Number of sampels dropped since the element came out of READY */
+
+  gboolean qos_messages;        /* Property to decide to send QoS messages or not */
 };
 
 
@@ -121,12 +132,6 @@ struct _GstAudioAggregatorPadPrivate
  *****************************************/
 G_DEFINE_TYPE_WITH_PRIVATE (GstAudioAggregatorPad, gst_audio_aggregator_pad,
     GST_TYPE_AGGREGATOR_PAD);
-
-enum
-{
-  PROP_PAD_0,
-  PROP_PAD_CONVERTER_CONFIG,
-};
 
 static GstFlowReturn
 gst_audio_aggregator_pad_flush_pad (GstAggregatorPad * aggpad,
@@ -143,13 +148,64 @@ gst_audio_aggregator_pad_finalize (GObject * object)
 }
 
 static void
+gst_audio_aggregator_pad_get_property (GObject * object, guint prop_id,
+    GValue * value, GParamSpec * pspec)
+{
+  GstAudioAggregatorPad *pad = GST_AUDIO_AGGREGATOR_PAD (object);
+
+  switch (prop_id) {
+    case PROP_PAD_QOS_MESSAGES:
+      GST_OBJECT_LOCK (pad);
+      g_value_set_boolean (value, pad->priv->qos_messages);
+      GST_OBJECT_UNLOCK (pad);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
+}
+
+static void
+gst_audio_aggregator_pad_set_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec)
+{
+  GstAudioAggregatorPad *pad = GST_AUDIO_AGGREGATOR_PAD (object);
+
+  switch (prop_id) {
+    case PROP_PAD_QOS_MESSAGES:
+      GST_OBJECT_LOCK (pad);
+      pad->priv->qos_messages = g_value_get_boolean (value);
+      GST_OBJECT_UNLOCK (pad);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
+}
+
+static void
 gst_audio_aggregator_pad_class_init (GstAudioAggregatorPadClass * klass)
 {
   GObjectClass *gobject_class = (GObjectClass *) klass;
   GstAggregatorPadClass *aggpadclass = (GstAggregatorPadClass *) klass;
 
+  gobject_class->set_property = gst_audio_aggregator_pad_set_property;
+  gobject_class->get_property = gst_audio_aggregator_pad_get_property;
   gobject_class->finalize = gst_audio_aggregator_pad_finalize;
   aggpadclass->flush = GST_DEBUG_FUNCPTR (gst_audio_aggregator_pad_flush_pad);
+
+  /**
+   * GstAudioAggregatorPad:qos-messages:
+   *
+   * Emit QoS messages when dropping buffers.
+   *
+   * Since: 1.20
+   */
+  g_object_class_install_property (gobject_class,
+      PROP_PAD_QOS_MESSAGES, g_param_spec_boolean ("qos-messages",
+          "Quality of Service Messages",
+          "Emit QoS messages when dropping buffers", FALSE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 }
 
 static void
@@ -167,6 +223,13 @@ gst_audio_aggregator_pad_init (GstAudioAggregatorPad * pad)
   pad->priv->discont_time = GST_CLOCK_TIME_NONE;
 }
 
+/* Must be called from srcpad thread or when it is stopped */
+static void
+gst_audio_aggregator_pad_reset_qos (GstAudioAggregatorPad * pad)
+{
+  pad->priv->dropped = 0;
+  pad->priv->processed = 0;
+}
 
 static GstFlowReturn
 gst_audio_aggregator_pad_flush_pad (GstAggregatorPad * aggpad,
@@ -179,10 +242,17 @@ gst_audio_aggregator_pad_flush_pad (GstAggregatorPad * aggpad,
   pad->priv->output_offset = pad->priv->next_offset = -1;
   pad->priv->discont_time = GST_CLOCK_TIME_NONE;
   gst_buffer_replace (&pad->priv->buffer, NULL);
+  gst_audio_aggregator_pad_reset_qos (pad);
   GST_OBJECT_UNLOCK (aggpad);
 
   return GST_FLOW_OK;
 }
+
+enum
+{
+  PROP_CONVERT_PAD_0,
+  PROP_CONVERT_PAD_CONVERTER_CONFIG
+};
 
 struct _GstAudioAggregatorConvertPadPrivate
 {
@@ -196,35 +266,46 @@ struct _GstAudioAggregatorConvertPadPrivate
 G_DEFINE_TYPE_WITH_PRIVATE (GstAudioAggregatorConvertPad,
     gst_audio_aggregator_convert_pad, GST_TYPE_AUDIO_AGGREGATOR_PAD);
 
-static void
+static gboolean
 gst_audio_aggregator_convert_pad_update_converter (GstAudioAggregatorConvertPad
     * aaggcpad, GstAudioInfo * in_info, GstAudioInfo * out_info)
 {
-  if (!aaggcpad->priv->converter_config_changed)
-    return;
+  GstStructure *config = aaggcpad->priv->converter_config;
+  GstAudioConverter *converter;
 
-  if (aaggcpad->priv->converter) {
-    gst_audio_converter_free (aaggcpad->priv->converter);
-    aaggcpad->priv->converter = NULL;
+  if (!aaggcpad->priv->converter_config_changed) {
+    return TRUE;
   }
 
-  if (gst_audio_info_is_equal (in_info, out_info) ||
-      in_info->finfo->format == GST_AUDIO_FORMAT_UNKNOWN) {
-    if (aaggcpad->priv->converter) {
-      gst_audio_converter_free (aaggcpad->priv->converter);
-      aaggcpad->priv->converter = NULL;
-    }
-  } else {
+  g_clear_pointer (&aaggcpad->priv->converter, gst_audio_converter_free);
+
+  if (in_info->finfo->format == GST_AUDIO_FORMAT_UNKNOWN) {
     /* If we haven't received caps yet, this pad should not have
      * a buffer to convert anyway */
-    aaggcpad->priv->converter =
-        gst_audio_converter_new (GST_AUDIO_CONVERTER_FLAG_NONE,
-        in_info, out_info,
-        aaggcpad->priv->converter_config ? gst_structure_copy (aaggcpad->priv->
-            converter_config) : NULL);
+    GST_FIXME_OBJECT (aaggcpad, "UNREACHABLE CODE: Unknown input format");
+    return FALSE;
+  }
+
+  converter =
+      gst_audio_converter_new (GST_AUDIO_CONVERTER_FLAG_NONE, in_info, out_info,
+      config ? gst_structure_copy (config) : NULL);
+
+  if (converter == NULL) {
+    /* Not converting when we need to but the config is invalid (e.g. because
+     * the mix-matrix is not the right size) produces garbage. An invalid
+     * config causes a GST_FLOW_NOT_NEGOTIATED. */
+    GST_WARNING_OBJECT (aaggcpad, "Failed to update converter");
+    return FALSE;
   }
 
   aaggcpad->priv->converter_config_changed = FALSE;
+
+  if (!gst_audio_converter_is_passthrough (converter))
+    aaggcpad->priv->converter = converter;
+  else
+    gst_audio_converter_free (converter);
+
+  return TRUE;
 }
 
 static void
@@ -244,8 +325,10 @@ gst_audio_aggregator_convert_pad_convert_buffer (GstAudioAggregatorPad *
   GstAudioAggregatorConvertPad *aaggcpad =
       GST_AUDIO_AGGREGATOR_CONVERT_PAD (aaggpad);
 
-  gst_audio_aggregator_convert_pad_update_converter (aaggcpad, in_info,
-      out_info);
+  if (!gst_audio_aggregator_convert_pad_update_converter (aaggcpad, in_info,
+          out_info)) {
+    return NULL;
+  }
 
   if (aaggcpad->priv->converter) {
     gint insize = gst_buffer_get_size (input_buffer);
@@ -303,7 +386,7 @@ gst_audio_aggregator_convert_pad_get_property (GObject * object, guint prop_id,
   GstAudioAggregatorConvertPad *pad = GST_AUDIO_AGGREGATOR_CONVERT_PAD (object);
 
   switch (prop_id) {
-    case PROP_PAD_CONVERTER_CONFIG:
+    case PROP_CONVERT_PAD_CONVERTER_CONFIG:
       GST_OBJECT_LOCK (pad);
       if (pad->priv->converter_config)
         g_value_set_boxed (value, pad->priv->converter_config);
@@ -322,7 +405,7 @@ gst_audio_aggregator_convert_pad_set_property (GObject * object, guint prop_id,
   GstAudioAggregatorConvertPad *pad = GST_AUDIO_AGGREGATOR_CONVERT_PAD (object);
 
   switch (prop_id) {
-    case PROP_PAD_CONVERTER_CONFIG:
+    case PROP_CONVERT_PAD_CONVERTER_CONFIG:
       GST_OBJECT_LOCK (pad);
       if (pad->priv->converter_config)
         gst_structure_free (pad->priv->converter_config);
@@ -347,7 +430,8 @@ gst_audio_aggregator_convert_pad_class_init (GstAudioAggregatorConvertPadClass *
   gobject_class->set_property = gst_audio_aggregator_convert_pad_set_property;
   gobject_class->get_property = gst_audio_aggregator_convert_pad_get_property;
 
-  g_object_class_install_property (gobject_class, PROP_PAD_CONVERTER_CONFIG,
+  g_object_class_install_property (gobject_class,
+      PROP_CONVERT_PAD_CONVERTER_CONFIG,
       g_param_spec_boxed ("converter-config", "Converter configuration",
           "A GstStructure describing the configuration that should be used "
           "when converting this pad's audio buffers",
@@ -403,6 +487,10 @@ struct _GstAudioAggregatorPrivate
   /* info structure passed to selected-samples signal, must only be accessed
    * from the aggregate thread */
   GstStructure *selected_samples_info;
+
+  /* Only access from src thread */
+  /* Messages to post after releasing locks */
+  GQueue messages;
 };
 
 #define GST_AUDIO_AGGREGATOR_LOCK(self)   g_mutex_lock (&(self)->priv->mutex);
@@ -449,6 +537,7 @@ static GstSample *gst_audio_aggregator_peek_next_sample (GstAggregator * agg,
 #define DEFAULT_DISCONT_WAIT (1 * GST_SECOND)
 #define DEFAULT_OUTPUT_BUFFER_DURATION_N (1)
 #define DEFAULT_OUTPUT_BUFFER_DURATION_D (100)
+#define DEFAULT_FORCE_LIVE FALSE
 
 enum
 {
@@ -457,6 +546,8 @@ enum
   PROP_ALIGNMENT_THRESHOLD,
   PROP_DISCONT_WAIT,
   PROP_OUTPUT_BUFFER_DURATION_FRACTION,
+  PROP_IGNORE_INACTIVE_PADS,
+  PROP_FORCE_LIVE,
 };
 
 G_DEFINE_ABSTRACT_TYPE_WITH_PRIVATE (GstAudioAggregator, gst_audio_aggregator,
@@ -547,12 +638,24 @@ gst_audio_aggregator_recalculate_latency (GstAudioAggregator * aagg)
   GST_OBJECT_UNLOCK (aagg);
 }
 
+
+static void
+gst_audio_aggregator_constructed (GObject * object)
+{
+  GstAudioAggregator *aagg = GST_AUDIO_AGGREGATOR (object);
+
+  gst_audio_aggregator_translate_output_buffer_duration (aagg,
+      DEFAULT_OUTPUT_BUFFER_DURATION);
+  gst_audio_aggregator_recalculate_latency (aagg);
+}
+
 static void
 gst_audio_aggregator_class_init (GstAudioAggregatorClass * klass)
 {
   GObjectClass *gobject_class = (GObjectClass *) klass;
   GstAggregatorClass *gstaggregator_class = (GstAggregatorClass *) klass;
 
+  gobject_class->constructed = gst_audio_aggregator_constructed;
   gobject_class->set_property = gst_audio_aggregator_set_property;
   gobject_class->get_property = gst_audio_aggregator_get_property;
   gobject_class->dispose = gst_audio_aggregator_dispose;
@@ -617,7 +720,45 @@ gst_audio_aggregator_class_init (GstAudioAggregatorClass * klass)
           "Window of time in nanoseconds to wait before "
           "creating a discontinuity", 0,
           G_MAXUINT64 - 1, DEFAULT_DISCONT_WAIT,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_PLAYING));
+
+  /**
+   * GstAudioAggregator:ignore-inactive-pads:
+   *
+   * Don't wait for inactive pads when live. An inactive pad
+   * is a pad that hasn't yet received a buffer, but that has
+   * been waited on at least once.
+   *
+   * The purpose of this property is to avoid aggregating on
+   * timeout when new pads are requested in advance of receiving
+   * data flow, for example the user may decide to connect it later,
+   * but wants to configure it already.
+   *
+   * Since: 1.20
+   */
+  g_object_class_install_property (gobject_class,
+      PROP_IGNORE_INACTIVE_PADS, g_param_spec_boolean ("ignore-inactive-pads",
+          "Ignore inactive pads",
+          "Avoid timing out waiting for inactive pads", FALSE,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+  /**
+   * GstAudioAggregator:force-live:
+   *
+   * Causes the element to aggregate on a timeout even when no live source is
+   * connected to its sinks. See #GstAggregator:min-upstream-latency for a
+   * companion property: in the vast majority of cases where you plan to plug in
+   * live sources with a non-zero latency, you should set it to a non-zero value.
+   *
+   * Since: 1.22
+   */
+  g_object_class_install_property (gobject_class, PROP_FORCE_LIVE,
+      g_param_spec_boolean ("force-live", "Force live",
+          "Always operate in live mode and aggregate on timeout regardless of "
+          "whether any live sources are linked upstream",
+          DEFAULT_FORCE_LIVE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_CONSTRUCT_ONLY));
 }
 
 static void
@@ -630,14 +771,12 @@ gst_audio_aggregator_init (GstAudioAggregator * aagg)
   aagg->priv->alignment_threshold = DEFAULT_ALIGNMENT_THRESHOLD;
   aagg->priv->discont_wait = DEFAULT_DISCONT_WAIT;
 
-  gst_audio_aggregator_translate_output_buffer_duration (aagg,
-      DEFAULT_OUTPUT_BUFFER_DURATION);
-  gst_audio_aggregator_recalculate_latency (aagg);
-
   aagg->current_caps = NULL;
 
   aagg->priv->selected_samples_info =
       gst_structure_new_empty ("GstAudioAggregatorSelectedSamplesInfo");
+
+  g_queue_init (&aagg->priv->messages);
 }
 
 static void
@@ -681,6 +820,14 @@ gst_audio_aggregator_set_property (GObject * object, guint prop_id,
       g_object_notify (object, "output-buffer-duration");
       gst_audio_aggregator_recalculate_latency (aagg);
       break;
+    case PROP_IGNORE_INACTIVE_PADS:
+      gst_aggregator_set_ignore_inactive_pads (GST_AGGREGATOR (object),
+          g_value_get_boolean (value));
+      break;
+    case PROP_FORCE_LIVE:
+      gst_aggregator_set_force_live (GST_AGGREGATOR (object),
+          g_value_get_boolean (value));
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -708,6 +855,14 @@ gst_audio_aggregator_get_property (GObject * object, guint prop_id,
     case PROP_OUTPUT_BUFFER_DURATION_FRACTION:
       gst_value_set_fraction (value, aagg->priv->output_buffer_duration_n,
           aagg->priv->output_buffer_duration_d);
+      break;
+    case PROP_IGNORE_INACTIVE_PADS:
+      g_value_set_boolean (value,
+          gst_aggregator_get_ignore_inactive_pads (GST_AGGREGATOR (object)));
+      break;
+    case PROP_FORCE_LIVE:
+      g_value_set_boolean (value,
+          gst_aggregator_get_force_live (GST_AGGREGATOR (object)));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1048,7 +1203,7 @@ gst_audio_aggregator_fixate_src_caps (GstAggregator * agg, GstCaps * caps)
 }
 
 /* Must be called with OBJECT_LOCK taken */
-static void
+static gboolean
 gst_audio_aggregator_update_converters (GstAudioAggregator * aagg,
     GstAudioInfo * new_info, GstAudioInfo * old_info)
 {
@@ -1069,9 +1224,12 @@ gst_audio_aggregator_update_converters (GstAudioAggregator * aagg,
           gst_audio_aggregator_convert_buffer (aagg, GST_PAD (aaggpad),
           old_info, new_info, aaggpad->priv->buffer);
       gst_buffer_replace (&aaggpad->priv->buffer, new_converted_buffer);
-      gst_buffer_unref (new_converted_buffer);
+      if (new_converted_buffer)
+        gst_buffer_unref (new_converted_buffer);
     }
   }
+
+  return TRUE;
 }
 
 /* We now have our final output caps, we can create the required converters */
@@ -1105,7 +1263,11 @@ gst_audio_aggregator_negotiated_src_caps (GstAggregator * agg, GstCaps * caps)
 
     memcpy (&srcpad->info, &info, sizeof (info));
 
-    gst_audio_aggregator_update_converters (aagg, &info, &old_info);
+    if (!gst_audio_aggregator_update_converters (aagg, &info, &old_info)) {
+      GST_OBJECT_UNLOCK (aagg);
+      GST_AUDIO_AGGREGATOR_UNLOCK (aagg);
+      return FALSE;
+    }
 
     if (srcpad_klass->update_conversion_info)
       srcpad_klass->update_conversion_info (GST_AUDIO_AGGREGATOR_PAD (agg->
@@ -1119,6 +1281,11 @@ gst_audio_aggregator_negotiated_src_caps (GstAggregator * agg, GstCaps * caps)
           &info, aagg->priv->current_buffer);
       gst_buffer_unref (aagg->priv->current_buffer);
       aagg->priv->current_buffer = converted;
+      if (!converted) {
+        GST_OBJECT_UNLOCK (aagg);
+        GST_AUDIO_AGGREGATOR_UNLOCK (aagg);
+        return FALSE;
+      }
     }
 
     /* Force recalculating in aggregate */
@@ -1223,7 +1390,7 @@ gst_audio_aggregator_sink_event (GstAggregator * agg,
       gst_event_parse_segment (event, &segment);
 
       if (segment->format != GST_FORMAT_TIME) {
-        GST_ERROR_OBJECT (agg, "Segment of type %s are not supported,"
+        GST_ERROR_OBJECT (aggpad, "Segment of type %s are not supported,"
             " only TIME segments are supported",
             gst_format_get_name (segment->format));
         gst_event_unref (event);
@@ -1250,6 +1417,7 @@ gst_audio_aggregator_sink_event (GstAggregator * agg,
 
         GST_OBJECT_LOCK (pad);
         pad->priv->new_segment = TRUE;
+        gst_audio_aggregator_pad_reset_qos (pad);
         GST_OBJECT_UNLOCK (pad);
       }
       GST_OBJECT_UNLOCK (agg);
@@ -1561,6 +1729,77 @@ gst_audio_aggregator_do_clip (GstAggregator * agg,
   return buffer;
 }
 
+
+/* Called with the object lock for both the element and pad held,
+ * as well as the audio aggregator lock.
+ * Should only be called on the output queue.
+ */
+static GstClockTime
+gst_audio_aggregator_pad_enqueue_qos_message (GstAudioAggregatorPad * pad,
+    GstAudioAggregator * aagg, guint64 samples)
+{
+  GstAggregator *agg = GST_AGGREGATOR (aagg);
+  GstAggregatorPad *aggpad = GST_AGGREGATOR_PAD (pad);
+  GstAudioAggregatorPad *srcpad = GST_AUDIO_AGGREGATOR_PAD (agg->srcpad);
+
+  guint rate_output = GST_AUDIO_INFO_RATE (&srcpad->info);
+  GstClockTime offset = gst_util_uint64_scale (GST_SECOND, pad->priv->position,
+      rate_output);
+  GstClockTime timestamp = GST_BUFFER_PTS (pad->priv->buffer) + offset;
+  GstClockTime running_time =
+      gst_segment_to_running_time (&aggpad->segment, GST_FORMAT_TIME,
+      timestamp);
+  GstClockTime stream_time = gst_segment_to_stream_time (&aggpad->segment,
+      GST_FORMAT_TIME, timestamp);
+  GstClockTime duration;
+  guint rate_input;
+  guint64 processed, dropped;
+  GstMessage *msg;
+
+  if (!pad->priv->qos_messages)
+    return running_time;
+
+  if (GST_AUDIO_AGGREGATOR_PAD_GET_CLASS (pad)->convert_buffer)
+    rate_input = GST_AUDIO_INFO_RATE (&srcpad->info);
+  else
+    rate_input = GST_AUDIO_INFO_RATE (&pad->info);
+
+  duration = gst_util_uint64_scale (samples, GST_SECOND, rate_input);
+
+  processed = gst_util_uint64_scale (pad->priv->processed, rate_input,
+      rate_output);
+  dropped = gst_util_uint64_scale (pad->priv->dropped, rate_output,
+      rate_output);
+
+  msg = gst_message_new_qos (GST_OBJECT (aggpad), TRUE, running_time,
+      stream_time, timestamp, duration);
+  gst_message_set_qos_stats (msg, GST_FORMAT_DEFAULT, processed, dropped);
+
+  g_queue_push_tail (&aagg->priv->messages, msg);
+
+  return running_time;
+}
+
+static void
+gst_audio_aggregator_post_messages (GstAudioAggregator * aagg)
+{
+  if (g_queue_get_length (&aagg->priv->messages) != 0) {
+    GstClockTime latency = gst_aggregator_get_latency (GST_AGGREGATOR (aagg));
+    gboolean is_live = GST_CLOCK_TIME_IS_VALID (latency);
+    GstElement *e = GST_ELEMENT (aagg);
+    GstMessage *msg;
+
+    while ((msg = g_queue_pop_head (&aagg->priv->messages))) {
+      if (is_live) {
+        GstStructure *s = gst_message_writable_structure (msg);
+        gst_structure_set (s, "live", G_TYPE_BOOLEAN, TRUE, NULL);
+      }
+
+      gst_element_post_message (e, msg);
+    }
+  }
+}
+
 /* Called with the object lock for both the element and pad held,
  * as well as the aagg lock
  *
@@ -1720,6 +1959,15 @@ gst_audio_aggregator_fill_buffer (GstAudioAggregator * aagg,
       end_output_offset = start_output_offset + pad->priv->size;
 
     if (end_output_offset < aagg->priv->offset) {
+      GstClockTime rt;
+
+      pad->priv->dropped += pad->priv->size;
+      rt = gst_audio_aggregator_pad_enqueue_qos_message (pad, aagg,
+          pad->priv->size);
+      GST_DEBUG_OBJECT (pad, "Dropped buffer of %u samples at running time %"
+          GST_TIME_FORMAT " because input buffer is entirely before current"
+          " output offset", pad->priv->size, GST_TIME_ARGS (rt));
+
       pad->priv->position = 0;
       pad->priv->size = 0;
       GST_DEBUG_OBJECT (pad,
@@ -1750,11 +1998,22 @@ gst_audio_aggregator_fill_buffer (GstAudioAggregator * aagg,
         diff = aagg->priv->offset - start_output_offset;
       }
 
+      pad->priv->dropped += MIN (diff, pad->priv->size);
+      if (diff != 0) {
+        GstClockTime rt;
+
+        rt = gst_audio_aggregator_pad_enqueue_qos_message (pad, aagg, diff);
+        GST_DEBUG_OBJECT (pad, "Dropped %u samples at running time %"
+            GST_TIME_FORMAT " because input buffer starts before current"
+            " output offset", diff, GST_TIME_ARGS (rt));
+      }
+
       pad->priv->position += diff;
       if (start_output_offset != -1)
         start_output_offset += diff;
       if (pad->priv->position >= pad->priv->size) {
         /* Empty buffer, drop */
+        pad->priv->dropped += pad->priv->size;
         pad->priv->position = 0;
         pad->priv->size = 0;
         GST_DEBUG_OBJECT (pad,
@@ -1840,6 +2099,7 @@ gst_audio_aggregator_mix_buffer (GstAudioAggregator * aagg,
   if (pad_changed)
     return FALSE;
 
+  pad->priv->processed += overlap;
   pad->priv->position += overlap;
   pad->priv->output_offset += overlap;
 
@@ -1876,7 +2136,8 @@ gst_audio_aggregator_create_output_buffer (GstAudioAggregator * aagg,
     gst_object_unref (allocator);
 
   gst_buffer_map (outbuf, &outmap, GST_MAP_WRITE);
-  gst_audio_format_fill_silence (srcpad->info.finfo, outmap.data, outmap.size);
+  gst_audio_format_info_fill_silence (srcpad->info.finfo, outmap.data,
+      outmap.size);
   gst_buffer_unmap (outbuf, &outmap);
 
   return outbuf;
@@ -1969,7 +2230,7 @@ gst_audio_aggregator_aggregate (GstAggregator * agg, gboolean timeout)
   gint64 next_timestamp;
   gint rate, bpf;
   gboolean dropped = FALSE;
-  gboolean is_eos = TRUE;
+  gboolean is_eos = !gst_aggregator_get_force_live (agg);
   gboolean is_done = TRUE;
   guint blocksize;
   GstAudioAggregatorPad *srcpad = GST_AUDIO_AGGREGATOR_PAD (agg->srcpad);
@@ -2095,6 +2356,9 @@ gst_audio_aggregator_aggregate (GstAggregator * agg, gboolean timeout)
     gboolean pad_eos = gst_aggregator_pad_is_eos (aggpad);
     GstBuffer *input_buffer;
 
+    if (gst_aggregator_pad_is_inactive (aggpad))
+      continue;
+
     if (!pad_eos)
       is_eos = FALSE;
 
@@ -2123,12 +2387,18 @@ gst_audio_aggregator_aggregate (GstAggregator * agg, gboolean timeout)
 
     /* New buffer? */
     if (!pad->priv->buffer) {
-      if (GST_AUDIO_AGGREGATOR_PAD_GET_CLASS (pad)->convert_buffer)
+      if (GST_AUDIO_AGGREGATOR_PAD_GET_CLASS (pad)->convert_buffer) {
         pad->priv->buffer =
             gst_audio_aggregator_convert_buffer
             (aagg, GST_PAD (pad), &pad->info, &srcpad->info, input_buffer);
-      else
+        if (!pad->priv->buffer) {
+          GST_OBJECT_UNLOCK (pad);
+          GST_OBJECT_UNLOCK (agg);
+          goto not_negotiated;
+        }
+      } else {
         pad->priv->buffer = gst_buffer_ref (input_buffer);
+      }
 
       if (!gst_audio_aggregator_fill_buffer (aagg, pad)) {
         gst_buffer_replace (&pad->priv->buffer, NULL);
@@ -2158,6 +2428,15 @@ gst_audio_aggregator_aggregate (GstAggregator * agg, gboolean timeout)
 
       if (pad->priv->position + diff > pad->priv->size)
         diff = pad->priv->size - pad->priv->position;
+      pad->priv->dropped += diff;
+      if (diff != 0) {
+        GstClockTime rt;
+
+        rt = gst_audio_aggregator_pad_enqueue_qos_message (pad, aagg, diff);
+        GST_DEBUG_OBJECT (pad, "Dropped %" G_GINT64_FORMAT " samples at"
+            " running time %" GST_TIME_FORMAT " because input buffer is before"
+            " output offset", diff, GST_TIME_ARGS (rt));
+      }
       pad->priv->position += diff;
       pad->priv->output_offset += diff;
 
@@ -2180,6 +2459,8 @@ gst_audio_aggregator_aggregate (GstAggregator * agg, gboolean timeout)
   }
   GST_OBJECT_UNLOCK (agg);
 
+  gst_audio_aggregator_post_messages (aagg);
+
   {
     gst_structure_set (aagg->priv->selected_samples_info, "offset",
         G_TYPE_UINT64, aagg->priv->offset, "frames", G_TYPE_UINT, blocksize,
@@ -2193,6 +2474,9 @@ gst_audio_aggregator_aggregate (GstAggregator * agg, gboolean timeout)
   for (iter = element->sinkpads; iter; iter = iter->next) {
     GstAudioAggregatorPad *pad = (GstAudioAggregatorPad *) iter->data;
     GstAggregatorPad *aggpad = (GstAggregatorPad *) iter->data;
+
+    if (gst_aggregator_pad_is_inactive (aggpad))
+      continue;
 
     GST_OBJECT_LOCK (pad);
 
@@ -2244,6 +2528,9 @@ gst_audio_aggregator_aggregate (GstAggregator * agg, gboolean timeout)
     GST_OBJECT_LOCK (agg);
     for (iter = GST_ELEMENT (agg)->sinkpads; iter; iter = iter->next) {
       GstAudioAggregatorPad *pad = GST_AUDIO_AGGREGATOR_PAD (iter->data);
+
+      if (gst_aggregator_pad_is_inactive (GST_AGGREGATOR_PAD (pad)))
+        continue;
 
       max_offset = MAX ((gint64) max_offset, (gint64) pad->priv->output_offset);
     }

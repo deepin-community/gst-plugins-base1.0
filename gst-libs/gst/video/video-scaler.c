@@ -302,8 +302,8 @@ gst_video_scaler_get_max_taps (GstVideoScaler * scale)
  * gst_video_scaler_get_coeff:
  * @scale: a #GstVideoScaler
  * @out_offset: an output offset
- * @in_offset: result input offset
- * @n_taps: result n_taps
+ * @in_offset: (out) (optional): result input offset
+ * @n_taps: (out) (optional): result n_taps
  *
  * For a given pixel at @out_offset, get the first required input pixel at
  * @in_offset and the @n_taps filter coefficients.
@@ -1239,6 +1239,14 @@ get_functions (GstVideoScaler * hscale, GstVideoScaler * vscale,
       *n_elems = 4;
       break;
     case GST_VIDEO_FORMAT_ARGB64:
+    case GST_VIDEO_FORMAT_ARGB64_LE:
+    case GST_VIDEO_FORMAT_ARGB64_BE:
+    case GST_VIDEO_FORMAT_RGBA64_BE:
+    case GST_VIDEO_FORMAT_RGBA64_LE:
+    case GST_VIDEO_FORMAT_BGRA64_BE:
+    case GST_VIDEO_FORMAT_BGRA64_LE:
+    case GST_VIDEO_FORMAT_ABGR64_BE:
+    case GST_VIDEO_FORMAT_ABGR64_LE:
     case GST_VIDEO_FORMAT_AYUV64:
       *bits = 16;
       *n_elems = 4;

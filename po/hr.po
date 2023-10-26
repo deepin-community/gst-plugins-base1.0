@@ -4,33 +4,33 @@
 # This file is distributed under the same license as the gst-plugins-base package.
 #
 # Tomislav Krznar <tomislav.krznar@gmail.com>, 2012.
-# Božidar Putanec <bozidarp@yahoo.com>, 2016, 2018, 2019.
+# Božidar Putanec <bozidarp@yahoo.com>, 2016, 2018, 2019, 2021, 2022, 2023.
 msgid ""
 msgstr ""
-"Project-Id-Version: gst-plugins-base-1.15.1\n"
-"Report-Msgid-Bugs-To: http://bugzilla.gnome.org/\n"
-"POT-Creation-Date: 2019-02-26 11:43+0000\n"
-"PO-Revision-Date: 2019-03-03 13:33-0800\n"
+"Project-Id-Version: gst-plugins-base-1.21.90\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2023-02-22 11:52+0000\n"
+"PO-Revision-Date: 2023-01-15 19:31-0800\n"
 "Last-Translator: Božidar Putanec <bozidarp@yahoo.com>\n"
 "Language-Team: Croatian <lokalizacija@linux.hr>\n"
 "Language: hr\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 "X-Bugs: Report translation errors to the Language-Team address.\n"
-"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n"
-"%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
-"X-Generator: Poedit 2.2.1\n"
+"X-Generator: Lokalize 23.03.70\n"
 
 msgid "Could not open device for playback in mono mode."
-msgstr "Uređaj za reprodukciju nije moguće otvoriti u mono mȏdu."
+msgstr "Uređaj za reprodukciju nije moguće otvoriti u mono načinu."
 
 msgid "Could not open device for playback in stereo mode."
-msgstr "Uređaj za reprodukciju nije moguće otvoriti u stereo mȏdu."
+msgstr "Uređaj za reprodukciju nije moguće otvoriti u stereo načinu."
 
 #, c-format
 msgid "Could not open device for playback in %d-channel mode."
-msgstr "Uređaj za reprodukciju nije moguće otvoriti u %d-kanalnom mȏdu."
+msgstr "Uređaj za reprodukciju nije moguće otvoriti u %d-kanalnom načinu."
 
 msgid ""
 "Could not open audio device for playback. Device is being used by another "
@@ -46,21 +46,21 @@ msgid "Error outputting to audio device. The device has been disconnected."
 msgstr "Greška na ulazu audiouređaja. Uređaj nije spojen."
 
 msgid "Could not open device for recording in mono mode."
-msgstr "Uređaj za snimanje nije moguće otvoriti u mono mȏdu."
+msgstr "Uređaj za snimanje nije moguće otvoriti u mono načinu."
 
 msgid "Could not open device for recording in stereo mode."
-msgstr "Uređaj za snimanje nije moguće otvoriti u stereo mȏdu."
+msgstr "Uređaj za snimanje nije moguće otvoriti u stereo načinu."
 
 #, c-format
 msgid "Could not open device for recording in %d-channel mode"
-msgstr "Uređaj za snimanje nije moguće otvoriti u %d-kanalnom mȏdu"
+msgstr "Uređaj za snimanje nije moguće otvoriti u %d-kanalnom načinu"
 
 msgid ""
 "Could not open audio device for recording. Device is being used by another "
 "application."
 msgstr ""
-"Uređaj nije moguće otvoriti za snimanje. Uređaj trenutačno koristi neka "
-"druga aplikacija."
+"Uređaj nije moguće otvoriti za snimanje. Uređaj trenutno koristi neka druga "
+"aplikacija."
 
 msgid "Could not open audio device for recording."
 msgstr "Audiouređaj nije moguće otvoriti za snimanje."
@@ -77,30 +77,18 @@ msgstr "Nije moguće pozicioniranje (skočiti na poziciju) na CD-u."
 msgid "Could not read CD."
 msgstr "CD nije moguće čitati."
 
-msgid "failed to draw pattern"
-msgstr "nije uspjelo iscrtati uzorak"
+msgid "Could not determine type of stream"
+msgstr "Nije moguće odrediti tip protoka"
 
-msgid "A GL error occurred"
-msgstr "Dogodila se GL greška"
-
-msgid "format wasn't negotiated before get function"
-msgstr "format nije dogovoren prije pozivanja funkcije"
+msgid "This appears to be a text file"
+msgstr "Ovo izgleda kao tekstna datoteka"
 
 #, c-format
 msgid "Missing element '%s' - check your GStreamer installation."
 msgstr "Nema elementa „%s“ -- provjerite vašu GStreamer instalaciju."
 
-msgid "Could not determine type of stream"
-msgstr "Nije moguće odrediti vrstu protoka"
-
-msgid "This appears to be a text file"
-msgstr "Ovo izgleda kao tekstualna datoteka"
-
 msgid "Could not create \"uridecodebin\" element."
 msgstr "Nije moguće stvoriti element „uridecodebin“."
-
-msgid "Could not create \"uridecodebin3\" element."
-msgstr "Nije moguće stvoriti element „uridecodebin3“."
 
 #, c-format
 msgid "Both autovideosink and %s elements are missing."
@@ -121,7 +109,7 @@ msgid "The autovideosink element is not working."
 msgstr "Element autovideosink ne radi."
 
 msgid "Custom text sink element is not usable."
-msgstr "Prilagođeni tekstualni element-ponor nije upotrebljivi."
+msgstr "Prilagođeni tekstni element-ponor nije upotrebljivi."
 
 msgid "No volume control found"
 msgstr "Nema regulatora glasnoće"
@@ -146,11 +134,11 @@ msgstr "Element autoaudiosink ne radi."
 
 msgid "Can't play a text file without video or visualizations."
 msgstr ""
-"Nije moguće reproducirati tekstualnu datoteku bez videa ili vizualizacije."
+"Nije moguće reproducirati tekstnu datoteku bez videa ili vizualizacije."
 
 #, c-format
 msgid "No decoder available for type '%s'."
-msgstr "Dekoder za vrstu „%s“ nije na raspolaganju."
+msgstr "Dekoder za tip „%s“ nije na raspolaganju."
 
 msgid "No URI specified to play from."
 msgstr "Nije naveden URI izvor za reprodukciju."
@@ -160,14 +148,21 @@ msgid "Invalid URI \"%s\"."
 msgstr "URI adresa „%s“ nije valjana."
 
 msgid "This stream type cannot be played yet."
-msgstr "Ova vrsta protoka još se ne može reproducirati."
+msgstr "Ovaj tip protoka još se ne može reproducirati."
 
 #, c-format
 msgid "No URI handler implemented for \"%s\"."
 msgstr "Nijedan URI rukovatelj nije realiziran za „%s“."
 
+#, fuzzy
+msgid "Source element can't be prepared"
+msgstr "Element izvor nema sučelje."
+
 msgid "Source element is invalid."
 msgstr "Element izvor nije valjan."
+
+msgid "Source element has no pads."
+msgstr "Element izvor nema sučelje."
 
 #, c-format
 msgid "Error while sending data to \"%s:%d\"."
@@ -178,6 +173,15 @@ msgstr "Audio se ne može dovoljno brzo snimati"
 
 msgid "This CD has no audio tracks"
 msgstr "Ovaj CD nema audio zapisa"
+
+msgid "failed to draw pattern"
+msgstr "nije uspjelo iscrtati uzorak"
+
+msgid "A GL error occurred"
+msgstr "Dogodila se GL greška"
+
+msgid "format wasn't negotiated before get function"
+msgstr "format nije dogovoren prije pozivanja funkcije"
 
 msgid "ID3 tag"
 msgstr "ID3 tag"
@@ -213,9 +217,11 @@ msgid "Run-length encoding"
 msgstr "RLE (Run-length encoding)"
 
 # https://en.wikipedia.org/wiki/Timed_text
+#. subtitle formats with static descriptions
 msgid "Timed Text"
 msgstr "Timed Text (vremenski napasani tekst)"
 
+#. FIXME: add variant field to typefinder?
 msgid "Subtitle"
 msgstr "Podnaslov"
 
@@ -295,6 +301,9 @@ msgstr "Izvor je Real Time Streaming Protocol (RTSP)"
 msgid "Microsoft Media Server (MMS) protocol source"
 msgstr "Izvor je Microsoft Media Server (MMS)"
 
+#. TODO: find out how to add a comment for translators to the source code
+#. * (and tell them to make the first letter uppercase below if they move
+#. * the protocol to the middle or end of the string)
 #, c-format
 msgid "%s protocol source"
 msgstr "Protokol izvora je %s"
@@ -348,9 +357,8 @@ msgstr "Element GStreamera %s"
 msgid "Unknown source element"
 msgstr "Nepoznati element-izvor"
 
-#, fuzzy
 msgid "Unknown sink element"
-msgstr "Nepoznati element"
+msgstr "Nepoznati element-ponor"
 
 msgid "Unknown element"
 msgstr "Nepoznati element"
@@ -361,8 +369,10 @@ msgstr "Nepoznati element dekoder"
 msgid "Unknown encoder element"
 msgstr "Nepoznati element koder"
 
+#. we should really never get here, but we better still return
+#. * something if we do
 msgid "Plugin or element of unknown type"
-msgstr "Plugin ili element nepoznate vrste"
+msgstr "Plugin ili element nepoznatog tipa"
 
 msgid "Failed to read tag: not enough data"
 msgstr "Nije uspjelo pročitati tag: nema dovoljno podataka"
@@ -391,11 +401,29 @@ msgstr "ID izvođača albuma"
 msgid "MusicBrainz album artist ID"
 msgstr "MusicBrainz ID izvođača albuma"
 
+msgid "release group ID"
+msgstr "ID grupe objave"
+
+msgid "MusicBrainz release group ID"
+msgstr "MusicBrainz ID grupe objave"
+
+msgid "release track ID"
+msgstr "ID zapisa objave"
+
+msgid "MusicBrainz release track ID"
+msgstr "MusicBrainz ID zapisa objave"
+
 msgid "track TRM ID"
 msgstr "ID TRM zapisa"
 
 msgid "MusicBrainz TRM ID"
 msgstr "MusicBrainz TRM ID"
+
+msgid "AcoustID ID"
+msgstr "AcoustID ID"
+
+msgid "AcoustID fingerprint (chromaprint)"
+msgstr "AcoustID fingerprint (chromaprint)"
 
 msgid "capturing shutter speed"
 msgstr "ekspozicija"
@@ -441,10 +469,10 @@ msgid "The exposure program used when capturing an image"
 msgstr "Primijenjeni program ekspozicije pri snimanju slike"
 
 msgid "capturing exposure mode"
-msgstr "mȏd ekspozicije"
+msgstr "način ekspozicije"
 
 msgid "The exposure mode used when capturing an image"
-msgstr "Primijenjeni mȏd ekspozicije pri snimanju"
+msgstr "Primijenjeni način ekspozicije pri snimanju"
 
 msgid "capturing exposure compensation"
 msgstr "korektura ekspozicije"
@@ -453,7 +481,7 @@ msgid "The exposure compensation used when capturing an image"
 msgstr "Primijenjena korektura ekspozicije pri snimanju"
 
 msgid "capturing scene capture type"
-msgstr "izbor motiva"
+msgstr "tip snimanja scene prilikom snimanja"
 
 msgid "The scene capture mode used when capturing an image"
 msgstr "Primijenjeni izbor motiva pri snimanju slike"
@@ -495,18 +523,18 @@ msgid "If the flash fired while capturing an image"
 msgstr "Je li se bljeskalica aktivirala pri snimanju slike"
 
 msgid "capturing flash mode"
-msgstr "mȏd bljeskalice"
+msgstr "način bljeskalice"
 
 msgid "The selected flash mode while capturing an image"
-msgstr "Odabrani mȏd bljeskalice pri snimanju slike"
+msgstr "Odabrani način bljeskalice pri snimanju slike"
 
 msgid "capturing metering mode"
-msgstr "mȏd mjerenja"
+msgstr "način mjerenja"
 
 msgid ""
 "The metering mode used while determining exposure for capturing an image"
 msgstr ""
-"Primijenjeni mȏd mjerenja za određivanje ekspozicije pri snimanju slike"
+"Primijenjeni način mjerenja za određivanje ekspozicije pri snimanju slike"
 
 msgid "capturing source"
 msgstr "izvor za snimanje"
@@ -550,9 +578,18 @@ msgstr ""
 "Ne izlazi nakon prikaza popisa početnih uređaja već pričeka da se uređaji "
 "dodaju ili uklone."
 
+msgid "Include devices from hidden device providers."
+msgstr "Uključuje i uređaje od skrivenih davatelja uređaja."
+
 #, c-format
 msgid "Volume: %.0f%%"
 msgstr "Glasnoća: %.0f%%"
+
+msgid "Mute: on"
+msgstr "Mute: on"
+
+msgid "Mute: off"
+msgstr "Mute: off"
 
 msgid "Buffering..."
 msgstr "Punjenje međuspremnika..."
@@ -618,6 +655,9 @@ msgstr "glasnije"
 msgid "volume down"
 msgstr "tiše"
 
+msgid "toggle audio mute on/off"
+msgstr "prebacuje uključenje/isključenje zvuka"
+
 msgid "increase playback rate"
 msgstr "brže"
 
@@ -632,14 +672,14 @@ msgid "enable/disable trick modes"
 msgstr ""
 "omogući/onemogući „trick modes“ (simulira brzo premotavanje analognih VCR)"
 
-msgid "change audio track"
-msgstr "promijeni audio zapis"
+msgid "change to previous/next audio track"
+msgstr "promijeni na prethodni/slijedeći audio zapis"
 
-msgid "change video track"
-msgstr "promijeni video zapis"
+msgid "change to previous/next video track"
+msgstr "promijeni na  prethodni/slijedeći video zapis"
 
-msgid "change subtitle track"
-msgstr "promijeni (zapis) podnaslov"
+msgid "change to previous/next subtitle track"
+msgstr "promijeni na prethodni/slijedeći titl-zapis"
 
 msgid "seek to beginning"
 msgstr "skoči (premota) na početak"
@@ -648,7 +688,11 @@ msgid "show keyboard shortcuts"
 msgstr "tipkovnički prečaci"
 
 msgid "Interactive mode - keyboard controls:"
-msgstr "Interaktivni mȏd - tipkovničko upravljanje:"
+msgstr "Interaktivni način - tipkovničko upravljanje:"
+
+#, c-format
+msgid "Use Windows high-resolution clock, precision: %u ms\n"
+msgstr "Koristi Windows-ov sat visoke razlučivosti, preciznost: %u ms\n"
 
 msgid "Output status information and property notifications"
 msgstr "ispiše status i obavijesti o svojstvima"
@@ -666,6 +710,9 @@ msgstr "Audiosink koji će se koristiti (zadano: autovideosink)"
 msgid "Enable gapless playback"
 msgstr "Omogući reprodukciju bez pauza (između zapisa)"
 
+msgid "Enable instantaneous uri changes (only with playbin3)"
+msgstr "Omogući trenutne promjene URI-ja (samo s playbin3)"
+
 msgid "Shuffle playlist"
 msgstr "Izmiješati popis za reprodukciju"
 
@@ -675,18 +722,38 @@ msgstr "Onemogući interaktivno upravljanje pomoću tipkovnice"
 msgid "Volume"
 msgstr "Glasnoća"
 
+msgid "Start position in seconds."
+msgstr "Početna pozicija u sekundama."
+
+msgid "Enable accurate seeking"
+msgstr ""
+
 msgid "Playlist file containing input media files"
 msgstr ""
 "Datoteka s popisom za reprodukciju koja sadrži ulazne multimedijalne datoteke"
 
+msgid "Use the experimental instant-rate-change flag when changing rate"
+msgstr "Koristi pokusni „instant-rate-change flag“ pri promjeni brzine"
+
 msgid "Do not print any output (apart from errors)"
 msgstr "Ne ispisuje nikakve izlazne informacije (osim greški)"
 
-msgid "Use playbin3 pipeline"
-msgstr "Rabi playbin3 cjevovod"
+msgid ""
+"Use playbin3 pipeline (default varies depending on 'USE_PLAYBIN' env "
+"variable)"
+msgstr ""
+"Koristi playbin3 cjevovod (zadano varira ovisno o 'USE_PLAYBIN' varijabli "
+"okoline)"
 
-msgid "(default varies depending on 'USE_PLAYBIN' env variable)"
-msgstr "(zadano: varira, ovisno o varijabli okružja „USE_PLAYBIN“)"
+msgid ""
+"Keep showing the last frame on EOS until quit or playlist change command "
+"(gapless is ignored)"
+msgstr ""
+"Nastavi pokazivati posljednji okvir na EOS-u dok ne napustite ili "
+"promijenite naredbu za promjenu popisa za reprodukciju (zanemaruje „gapless“)"
+
+msgid "Do not print current position of pipeline"
+msgstr ""
 
 #, c-format
 msgid "Usage: %s FILE1|URI1 [FILE2|URI2] [FILE3|URI3] ..."
@@ -697,6 +764,12 @@ msgstr "Morate navesti barem jednu datoteku ili URI adresu za reprodukciju."
 
 msgid "Press 'k' to see a list of keyboard shortcuts.\n"
 msgstr "Pritisnite „k“ da pogledate listu tipkovničkih prečaca.\n"
+
+#~ msgid "Could not create \"uridecodebin3\" element."
+#~ msgstr "Nije moguće stvoriti element „uridecodebin3“."
+
+#~ msgid "Use playbin3 pipeline"
+#~ msgstr "Rabi playbin3 cjevovod"
 
 #~ msgid "Unknown ponor element"
 #~ msgstr "Nepoznati element-ponor"

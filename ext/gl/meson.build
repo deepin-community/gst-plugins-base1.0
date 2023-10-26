@@ -1,5 +1,6 @@
 opengl_sources = [
   'gstopengl.c',
+  'gstglelement.c',
   'gstglalpha.c',
   'gstgluploadelement.c',
   'gstgldownloadelement.c',
@@ -65,7 +66,7 @@ graphene_dep = dependency('graphene-gobject-1.0',
   version : '>=1.4.0',
   required : get_option('gl-graphene'),
   fallback: ['graphene', 'graphene_gobject_dep'],
-  default_options: ['introspection=false', 'installed_tests=false', 'tests=false'])
+  default_options: ['introspection=disabled', 'installed_tests=false', 'tests=false'])
 
 if graphene_dep.found()
   optional_deps += graphene_dep
@@ -132,10 +133,17 @@ if ['darwin', 'ios'].contains(host_system)
   gl_objc_args += ['-fobjc-arc']
 endif
 
+extra_c_args = []
+# gl_nvmm and nvbuf_utils_dep are set in gst-libs/gst/gl/meson.build
+if gl_nvmm
+  extra_c_args += ['-DHAVE_NVMM']
+  optional_deps += [nvbuf_utils_dep]
+endif
+
 gstopengl = library('gstopengl',
   opengl_sources,
-  c_args : gst_plugins_base_args,
-  objc_args : gst_plugins_base_args + gl_objc_args,
+  c_args : gst_plugins_base_args + extra_c_args,
+  objc_args : gst_plugins_base_args + gl_objc_args + extra_c_args,
   link_args : noseh_link_args,
   include_directories : [configinc],
   dependencies : [gstgl_dep, video_dep,
@@ -143,5 +151,4 @@ gstopengl = library('gstopengl',
   install : true,
   install_dir : plugins_install_dir)
 
-pkgconfig.generate(gstopengl, install_dir : plugins_pkgconfig_install_dir)
 plugins += [gstopengl]

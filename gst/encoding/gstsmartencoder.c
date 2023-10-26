@@ -23,6 +23,7 @@
 #endif
 
 #include <string.h>
+#include <gst/video/video.h>
 #include "gstsmartencoder.h"
 
 GST_DEBUG_CATEGORY_STATIC (smart_encoder_debug);
@@ -31,7 +32,10 @@ GST_DEBUG_CATEGORY_STATIC (smart_encoder_debug);
 /* FIXME : Update this with new caps */
 /* WARNING : We can only allow formats with closed-GOP */
 #define ALLOWED_CAPS "video/x-h263;video/x-intel-h263;"\
+  "video/x-vp8;"\
+  "video/x-vp9;"\
   "video/x-h264;"\
+  "video/x-h265;"\
   "video/mpeg,mpegversion=(int)1,systemstream=(boolean)false;"\
   "video/mpeg,mpegversion=(int)2,systemstream=(boolean)false;"
 
@@ -87,9 +91,12 @@ translate_timestamp_from_internal_to_src (GstSmartEncoder * self,
 static GstFlowReturn
 gst_smart_encoder_finish_buffer (GstSmartEncoder * self, GstBuffer * buf)
 {
+  if (!GST_CLOCK_TIME_IS_VALID (GST_BUFFER_DTS (buf)))
+    GST_BUFFER_DTS (buf) = GST_BUFFER_PTS (buf);
+
   translate_timestamp_from_internal_to_src (self, &GST_BUFFER_PTS (buf));
   translate_timestamp_from_internal_to_src (self, &GST_BUFFER_DTS (buf));
-  GST_BUFFER_DTS (buf) = GST_BUFFER_DTS (buf);
+
   if (self->last_dts > GST_BUFFER_DTS (buf)) {
     /* Hack to always produces dts increasing DTS-s that are close to what the
      * encoder produced. */
@@ -118,44 +125,25 @@ internal_event_func (GstPad * pad, GstObject * parent, GstEvent * event)
       break;
     case GST_EVENT_SEGMENT:
       gst_event_copy_segment (event, &self->internal_segment);
-      break;
-    case GST_EVENT_CAPS:
-    {
-      GstCaps *caps;
 
-      gst_event_parse_caps (event, &caps);
-      caps = gst_caps_copy (caps);
-      if (self->last_caps) {
-        GstBuffer *codec_data;
-        GstCaps *new_caps;
-        GstStructure *last_struct = gst_caps_get_structure (self->last_caps, 0);
+      if (self->output_segment.format == GST_FORMAT_UNDEFINED) {
+        gst_segment_init (&self->output_segment, GST_FORMAT_TIME);
 
-        gst_structure_get (last_struct, "codec_data", GST_TYPE_BUFFER,
-            &codec_data, NULL);
-        if (codec_data)
-          gst_structure_set (gst_caps_get_structure (caps, 0), "codec_data",
-              GST_TYPE_BUFFER, codec_data, NULL);
+        /* Ensure that we can represent negative DTS in our 'single' segment */
+        self->output_segment.start = 60 * 60 * GST_SECOND * 1000;
+        if (!gst_pad_push_event (self->srcpad,
+                gst_event_new_segment (&self->output_segment))) {
+          GST_ERROR_OBJECT (self, "Could not push segment!");
 
-        new_caps = gst_caps_intersect (self->last_caps, caps);
-        if (!new_caps || gst_caps_is_empty (new_caps)) {
-          GST_ERROR_OBJECT (parent, "New caps from reencoder %" GST_PTR_FORMAT
-              " are not compatible with previous caps: %" GST_PTR_FORMAT, caps,
-              self->last_caps);
-
-          g_mutex_lock (&self->internal_flow_lock);
-          self->internal_flow = GST_FLOW_NOT_NEGOTIATED;
-          g_cond_signal (&self->internal_flow_cond);
-          g_mutex_unlock (&self->internal_flow_lock);
+          GST_ELEMENT_FLOW_ERROR (self, GST_FLOW_ERROR);
 
           return FALSE;
         }
-
-        gst_caps_unref (caps);
-        caps = new_caps;
       }
-      event = gst_event_new_caps (caps);
-      self->last_caps = caps;
 
+      break;
+    case GST_EVENT_CAPS:
+    {
       return gst_pad_push_event (self->srcpad, event);
     }
     default:
@@ -371,30 +359,42 @@ done:
   return res;
 }
 
+static gboolean
+gst_smart_encoder_force_reencoding_for_caps (GstSmartEncoder * self)
+{
+  const gchar *profile;
+  GstStructure *structure = gst_caps_get_structure (self->original_caps, 0);
+
+  if (!gst_structure_has_name (structure, "video/x-vp9"))
+    return FALSE;
+
+  if (!(profile = gst_structure_get_string (structure, "profile"))) {
+    GST_WARNING_OBJECT (self,
+        "No profile set on `vp9` stream, force reencoding");
+
+    return TRUE;
+  }
+
+  if (g_strcmp0 (profile, "0") && g_strcmp0 (profile, "2")) {
+    GST_INFO_OBJECT (self, "vp9 profile %s not supported for smart reencoding"
+        " as it might be using RGB stream which we can't handle properly"
+        " force reencoding", profile);
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
 static GstFlowReturn
 gst_smart_encoder_push_pending_gop (GstSmartEncoder * self)
 {
   guint64 cstart, cstop;
   GList *tmp;
+  gboolean force_reencoding = FALSE;
   GstFlowReturn res = GST_FLOW_OK;
 
   GST_DEBUG ("Pushing pending GOP (%" GST_TIME_FORMAT " -- %" GST_TIME_FORMAT
       ")", GST_TIME_ARGS (self->gop_start), GST_TIME_ARGS (self->gop_stop));
-
-  if (self->output_segment.format == GST_FORMAT_UNDEFINED) {
-    gst_segment_init (&self->output_segment, GST_FORMAT_TIME);
-
-    /* Ensure that we can represent negative DTS in our 'single' segment */
-    self->output_segment.start = 60 * 60 * GST_SECOND * 1000;
-    if (!gst_pad_push_event (self->srcpad,
-            gst_event_new_segment (&self->output_segment))) {
-      GST_ERROR_OBJECT (self, "Could not push segment!");
-
-      GST_ELEMENT_FLOW_ERROR (self, GST_FLOW_ERROR);
-
-      return GST_FLOW_ERROR;
-    }
-  }
 
   if (!self->pending_gop) {
     /* This might happen on EOS */
@@ -416,14 +416,41 @@ gst_smart_encoder_push_pending_gop (GstSmartEncoder * self)
     goto done;
   }
 
+  force_reencoding = gst_smart_encoder_force_reencoding_for_caps (self);
   if ((cstart != self->gop_start)
-      || (cstop != self->gop_stop)) {
+      || (cstop != self->gop_stop)
+      || force_reencoding) {
     GST_INFO_OBJECT (self,
         "GOP needs to be re-encoded from %" GST_TIME_FORMAT " to %"
         GST_TIME_FORMAT " - %" GST_SEGMENT_FORMAT, GST_TIME_ARGS (cstart),
         GST_TIME_ARGS (cstop), &self->input_segment);
     res = gst_smart_encoder_reencode_gop (self);
+
+    /* Make sure we push the original caps when resuming the original stream */
+    if (!force_reencoding)
+      self->push_original_caps = TRUE;
   } else {
+    if (self->push_original_caps) {
+      gst_pad_push_event (self->srcpad,
+          gst_event_new_caps (self->original_caps));
+      self->push_original_caps = FALSE;
+    }
+
+    if (self->output_segment.format == GST_FORMAT_UNDEFINED) {
+      gst_segment_init (&self->output_segment, GST_FORMAT_TIME);
+
+      /* Ensure that we can represent negative DTS in our 'single' segment */
+      self->output_segment.start = 60 * 60 * GST_SECOND * 1000;
+      if (!gst_pad_push_event (self->srcpad,
+              gst_event_new_segment (&self->output_segment))) {
+        GST_ERROR_OBJECT (self, "Could not push segment!");
+
+        GST_ELEMENT_FLOW_ERROR (self, GST_FLOW_ERROR);
+
+        return GST_FLOW_ERROR;
+      }
+    }
+
     /* The whole GOP is within the segment, push all pending buffers downstream */
     GST_INFO_OBJECT (self,
         "GOP doesn't need to be modified, pushing downstream: %" GST_TIME_FORMAT
@@ -504,6 +531,66 @@ beach:
   return res;
 }
 
+static GstCaps *
+smart_encoder_get_caps (GstSmartEncoder * self, GstCaps * original_caps)
+{
+  gint i;
+  GstCaps *caps, *outcaps;
+  GstStructure *original_struct = gst_caps_get_structure (original_caps, 0);
+  GstStructure *out_struct, *_struct;
+  GstVideoInfo info;
+  static const gchar *default_fields[] = {
+    "pixel-aspect-ratio",
+    "framerate",
+    "interlace-mode",
+    "colorimetry",
+    "chroma-site",
+    "multiview-mode",
+    "multiview-flags",
+  };
+
+  if (!gst_structure_has_name (original_struct, "video/x-vp8")) {
+
+    return gst_caps_ref (original_caps);
+  }
+
+  /* VP8 is always decoded into YUV colorspaces and we support VP9 profiles
+   * where only YUV is supported (0 and 2) so we ensure that all the
+   * default fields for video/x-raw are set on the caps if none provided by
+   * upstream. This allows us to allow renegotiating new caps downstream when
+   * switching from no reencoding to reencoding making sure all the fields are
+   * defined all the time
+   */
+  caps = gst_caps_copy (original_caps);
+  _struct = gst_caps_get_structure (caps, 0);
+  gst_structure_set_name (_struct, "video/x-raw");
+  gst_structure_set (_struct,
+      "format", G_TYPE_STRING, "I420",
+      "multiview-mode", G_TYPE_STRING, "mono",
+      "multiview-flags", GST_TYPE_VIDEO_MULTIVIEW_FLAGSET,
+      GST_VIDEO_MULTIVIEW_FLAGS_NONE, GST_FLAG_SET_MASK_EXACT, NULL);
+
+  gst_video_info_from_caps (&info, caps);
+  gst_caps_unref (caps);
+  caps = gst_video_info_to_caps (&info);
+  _struct = gst_caps_get_structure (caps, 0);
+
+  outcaps = gst_caps_copy (original_caps);
+  out_struct = gst_caps_get_structure (outcaps, 0);
+  for (i = 0; i < G_N_ELEMENTS (default_fields); i++) {
+    const gchar *field = default_fields[i];
+
+    if (!gst_structure_has_field (original_struct, field)) {
+      const GValue *v = gst_structure_get_value (_struct, field);
+      g_assert (v);
+      gst_structure_set_value (out_struct, field, v);
+    }
+  }
+  gst_caps_unref (caps);
+
+  return outcaps;
+}
+
 static gboolean
 smart_encoder_sink_event (GstPad * pad, GstObject * ghostpad, GstEvent * event)
 {
@@ -515,13 +602,19 @@ smart_encoder_sink_event (GstPad * pad, GstObject * ghostpad, GstEvent * event)
       smart_encoder_reset (self);
       break;
     case GST_EVENT_CAPS:
-      if (self->last_caps) {
-        gst_clear_event (&event);
-      } else {
-        gst_event_parse_caps (event, &self->last_caps);
-        self->last_caps = gst_caps_copy (self->last_caps);
-      }
+    {
+      GstCaps *caps;
+
+      gst_event_parse_caps (event, &caps);
+      if (self->original_caps)
+        gst_caps_unref (self->original_caps);
+
+
+      self->original_caps = smart_encoder_get_caps (self, caps);
+      self->push_original_caps = TRUE;
+      gst_clear_event (&event);
       break;
+    }
     case GST_EVENT_STREAM_START:
       gst_event_replace (&self->stream_start_event, gst_event_ref (event));
       break;
@@ -612,14 +705,30 @@ _pad_sink_acceptcaps (GstPad * pad, GstSmartEncoder * self, GstCaps * caps)
   n = gst_caps_get_size (accepted_caps);
   for (i = 0; i < n; i++) {
     s = gst_caps_get_structure (accepted_caps, i);
-    gst_structure_remove_fields (s, "codec_data", NULL);
+
+    if (gst_structure_has_name (s, "video/x-h264") ||
+        gst_structure_has_name (s, "video/x-h265")) {
+      gst_structure_remove_fields (s, "codec_data", "tier", "profile", "level",
+          NULL);
+    } else if (gst_structure_has_name (s, "video/x-vp8")
+        || gst_structure_has_name (s, "video/x-vp9")) {
+      gst_structure_remove_field (s, "streamheader");
+    }
   }
 
   modified_caps = gst_caps_copy (caps);
   n = gst_caps_get_size (modified_caps);
   for (i = 0; i < n; i++) {
     s = gst_caps_get_structure (modified_caps, i);
-    gst_structure_remove_fields (s, "codec_data", NULL);
+
+    if (gst_structure_has_name (s, "video/x-h264") ||
+        gst_structure_has_name (s, "video/x-h265")) {
+      gst_structure_remove_fields (s, "codec_data", "tier", "profile", "level",
+          NULL);
+    } else if (gst_structure_has_name (s, "video/x-vp8")
+        || gst_structure_has_name (s, "video/x-vp9")) {
+      gst_structure_remove_field (s, "streamheader");
+    }
   }
 
   ret = gst_caps_can_intersect (modified_caps, accepted_caps);
@@ -667,23 +776,50 @@ smart_encoder_sink_query (GstPad * pad, GstObject * ghostpad, GstQuery * query)
 static gboolean
 gst_smart_encoder_add_parser (GstSmartEncoder * self, GstCaps * format)
 {
-  GstPad *chainpad, *internal_chainpad, *sinkpad;
+  const gchar *stream_format;
+  GstPad *chainpad, *internal_chainpad, *sinkpad = NULL;
+  GstStructure *structure = gst_caps_get_structure (format, 0);
   GstElement *capsfilter = gst_element_factory_make ("capsfilter", NULL);
+  GstElement *parser = NULL;
 
   gst_bin_add (GST_BIN (self), capsfilter);
   g_object_set (capsfilter, "caps", format, NULL);
-  if (gst_structure_has_name (gst_caps_get_structure (format, 0),
-          "video/x-h264")) {
-    GstElement *parser = gst_element_factory_make ("h264parse", NULL);
+  if (gst_structure_has_name (structure, "video/x-h264")) {
+    parser = gst_element_factory_make ("h264parse", NULL);
     if (!parser) {
       GST_ERROR_OBJECT (self, "`h264parse` is missing, can't encode smartly");
 
       goto failed;
     }
 
-    /* Add SPS/PPS before each gop to ensure that they can be decoded
-     * independently */
-    g_object_set (parser, "config-interval", -1, NULL);
+    stream_format = gst_structure_get_string (structure, "stream-format");
+    if (g_strcmp0 (stream_format, "avc"))
+      g_object_set (parser, "config-interval", -1, NULL);
+
+  } else if (gst_structure_has_name (gst_caps_get_structure (format, 0),
+          "video/x-h265")) {
+    parser = gst_element_factory_make ("h265parse", NULL);
+    if (!parser) {
+      GST_ERROR_OBJECT (self, "`h265parse` is missing, can't encode smartly");
+
+      goto failed;
+    }
+
+    stream_format = gst_structure_get_string (structure, "stream-format");
+    if (g_strcmp0 (stream_format, "hvc1"))
+      g_object_set (parser, "config-interval", -1, NULL);
+  } else if (gst_structure_has_name (structure, "video/x-vp9")) {
+    parser = gst_element_factory_make ("vp9parse", NULL);
+    if (!parser) {
+      GST_ERROR_OBJECT (self, "`vp9parse` is missing, can't encode smartly");
+
+      goto failed;
+    }
+  } else {
+    sinkpad = gst_element_get_static_pad (capsfilter, "sink");
+  }
+
+  if (parser) {
     if (!gst_bin_add (GST_BIN (self), parser)) {
       GST_ERROR_OBJECT (self, "Could not add parser.");
 
@@ -697,8 +833,6 @@ gst_smart_encoder_add_parser (GstSmartEncoder * self, GstCaps * format)
     }
 
     sinkpad = gst_element_get_static_pad (parser, "sink");
-  } else {
-    sinkpad = gst_element_get_static_pad (capsfilter, "sink");
   }
 
   g_assert (sinkpad);
@@ -722,6 +856,8 @@ gst_smart_encoder_add_parser (GstSmartEncoder * self, GstCaps * format)
   return TRUE;
 
 failed:
+  gst_clear_object (&parser);
+
   return FALSE;
 }
 
@@ -784,6 +920,11 @@ gst_smart_encoder_dispose (GObject * object)
   GstSmartEncoder *self = (GstSmartEncoder *) object;
 
   gst_clear_object (&self->encoder);
+
+  if (self->original_caps) {
+    gst_caps_unref (self->original_caps);
+    self->original_caps = NULL;
+  }
 
   G_OBJECT_CLASS (gst_smart_encoder_parent_class)->dispose (object);
 }

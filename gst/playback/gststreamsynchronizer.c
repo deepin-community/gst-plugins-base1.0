@@ -21,6 +21,7 @@
 #include "config.h"
 #endif
 
+#include "gstplaybackelements.h"
 #include "gststreamsynchronizer.h"
 
 GST_DEBUG_CATEGORY_STATIC (stream_synchronizer_debug);
@@ -55,6 +56,10 @@ static GstStaticPadTemplate sinktemplate = GST_STATIC_PAD_TEMPLATE ("sink_%u",
 #define gst_stream_synchronizer_parent_class parent_class
 G_DEFINE_TYPE (GstStreamSynchronizer, gst_stream_synchronizer,
     GST_TYPE_ELEMENT);
+#define _do_init \
+    playback_element_init (plugin);
+GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (streamsynchronizer, "streamsynchronizer",
+    GST_RANK_NONE, GST_TYPE_STREAM_SYNCHRONIZER, _do_init);
 
 typedef struct
 {
@@ -252,6 +257,35 @@ gst_stream_synchronizer_iterate_internal_links (GstPad * pad,
   return it;
 }
 
+static GstEvent *
+set_event_rt_offset (GstStreamSynchronizer * self, GstPad * pad,
+    GstEvent * event)
+{
+  gint64 running_time_diff;
+  GstSyncStream *stream;
+
+  GST_STREAM_SYNCHRONIZER_LOCK (self);
+  stream = gst_streamsync_pad_get_stream (pad);
+  running_time_diff = stream->segment.base;
+  gst_syncstream_unref (stream);
+  GST_STREAM_SYNCHRONIZER_UNLOCK (self);
+
+  if (running_time_diff != -1) {
+    gint64 offset;
+
+    event = gst_event_make_writable (event);
+    offset = gst_event_get_running_time_offset (event);
+    if (GST_PAD_IS_SRC (pad))
+      offset -= running_time_diff;
+    else
+      offset += running_time_diff;
+
+    gst_event_set_running_time_offset (event, offset);
+  }
+
+  return event;
+}
+
 /* srcpad functions */
 static gboolean
 gst_stream_synchronizer_src_event (GstPad * pad, GstObject * parent,
@@ -263,59 +297,10 @@ gst_stream_synchronizer_src_event (GstPad * pad, GstObject * parent,
   GST_LOG_OBJECT (pad, "Handling event %s: %" GST_PTR_FORMAT,
       GST_EVENT_TYPE_NAME (event), event);
 
-  switch (GST_EVENT_TYPE (event)) {
-    case GST_EVENT_QOS:{
-      gdouble proportion;
-      GstClockTimeDiff diff;
-      GstClockTime timestamp;
-      gint64 running_time_diff = -1;
-      GstSyncStream *stream;
-
-      gst_event_parse_qos (event, NULL, &proportion, &diff, &timestamp);
-      gst_event_unref (event);
-
-      GST_STREAM_SYNCHRONIZER_LOCK (self);
-      stream = gst_streamsync_pad_get_stream (pad);
-      running_time_diff = stream->segment.base;
-      gst_syncstream_unref (stream);
-      GST_STREAM_SYNCHRONIZER_UNLOCK (self);
-
-      if (running_time_diff == -1) {
-        GST_WARNING_OBJECT (pad, "QOS event before group start");
-        goto out;
-      }
-      if (timestamp < running_time_diff) {
-        GST_DEBUG_OBJECT (pad, "QOS event from previous group");
-        goto out;
-      }
-
-      GST_LOG_OBJECT (pad,
-          "Adjusting QOS event: %" GST_TIME_FORMAT " - %" GST_TIME_FORMAT " = %"
-          GST_TIME_FORMAT, GST_TIME_ARGS (timestamp),
-          GST_TIME_ARGS (running_time_diff),
-          GST_TIME_ARGS (timestamp - running_time_diff));
-
-      timestamp -= running_time_diff;
-
-      /* That case is invalid for QoS events */
-      if (diff < 0 && -diff > timestamp) {
-        GST_DEBUG_OBJECT (pad, "QOS event from previous group");
-        ret = TRUE;
-        goto out;
-      }
-
-      event =
-          gst_event_new_qos (GST_QOS_TYPE_UNDERFLOW, proportion, diff,
-          timestamp);
-      break;
-    }
-    default:
-      break;
-  }
+  event = set_event_rt_offset (self, pad, event);
 
   ret = gst_pad_event_default (pad, parent, event);
 
-out:
   return ret;
 }
 
@@ -403,6 +388,7 @@ gst_stream_synchronizer_sink_event (GstPad * pad, GstObject * parent,
       GST_STREAM_SYNCHRONIZER_LOCK (self);
       self->have_group_id &= have_group_id;
       have_group_id = self->have_group_id;
+      self->eos = FALSE;
 
       stream = gst_streamsync_pad_get_stream (pad);
 
@@ -434,13 +420,14 @@ gst_stream_synchronizer_sink_event (GstPad * pad, GstObject * parent,
                 "Stream %d belongs to running stream %d, no waiting",
                 stream->stream_number, ostream->stream_number);
             stream->wait = FALSE;
-
+            gst_syncstream_unref (stream);
             GST_STREAM_SYNCHRONIZER_UNLOCK (self);
             break;
           }
         } else if (group_id == self->group_id) {
           GST_DEBUG_OBJECT (pad, "Stream %d belongs to running group %d, "
               "no waiting", stream->stream_number, group_id);
+          gst_syncstream_unref (stream);
           GST_STREAM_SYNCHRONIZER_UNLOCK (self);
           break;
         }
@@ -594,12 +581,19 @@ gst_stream_synchronizer_sink_event (GstPad * pad, GstObject * parent,
       GstSyncStream *stream;
       GList *l;
       GstClockTime new_group_start_time = 0;
+      gboolean reset_time;
+
+      gst_event_parse_flush_stop (event, &reset_time);
 
       GST_STREAM_SYNCHRONIZER_LOCK (self);
+
       stream = gst_streamsync_pad_get_stream (pad);
-      GST_DEBUG_OBJECT (pad, "Resetting segment for stream %d",
-          stream->stream_number);
-      gst_segment_init (&stream->segment, GST_FORMAT_UNDEFINED);
+
+      if (reset_time) {
+        GST_DEBUG_OBJECT (pad, "Resetting segment for stream %d",
+            stream->stream_number);
+        gst_segment_init (&stream->segment, GST_FORMAT_UNDEFINED);
+      }
 
       stream->is_eos = FALSE;
       stream->eos_sent = FALSE;
@@ -607,32 +601,35 @@ gst_stream_synchronizer_sink_event (GstPad * pad, GstObject * parent,
       stream->wait = FALSE;
       g_cond_broadcast (&stream->stream_finish_cond);
 
-      for (l = self->streams; l; l = l->next) {
-        GstSyncStream *ostream = l->data;
-        GstClockTime start_running_time;
+      if (reset_time) {
+        for (l = self->streams; l; l = l->next) {
+          GstSyncStream *ostream = l->data;
+          GstClockTime start_running_time;
 
-        if (ostream == stream || ostream->flushing)
-          continue;
+          if (ostream == stream || ostream->flushing)
+            continue;
 
-        if (ostream->segment.format == GST_FORMAT_TIME) {
-          if (ostream->segment.rate > 0)
-            start_running_time =
-                gst_segment_to_running_time (&ostream->segment,
-                GST_FORMAT_TIME, ostream->segment.start);
-          else
-            start_running_time =
-                gst_segment_to_running_time (&ostream->segment,
-                GST_FORMAT_TIME, ostream->segment.stop);
+          if (ostream->segment.format == GST_FORMAT_TIME) {
+            if (ostream->segment.rate > 0)
+              start_running_time =
+                  gst_segment_to_running_time (&ostream->segment,
+                  GST_FORMAT_TIME, ostream->segment.start);
+            else
+              start_running_time =
+                  gst_segment_to_running_time (&ostream->segment,
+                  GST_FORMAT_TIME, ostream->segment.stop);
 
-          new_group_start_time = MAX (new_group_start_time, start_running_time);
+            new_group_start_time =
+                MAX (new_group_start_time, start_running_time);
+          }
         }
-      }
 
-      GST_DEBUG_OBJECT (pad,
-          "Updating group start time from %" GST_TIME_FORMAT " to %"
-          GST_TIME_FORMAT, GST_TIME_ARGS (self->group_start_time),
-          GST_TIME_ARGS (new_group_start_time));
-      self->group_start_time = new_group_start_time;
+        GST_DEBUG_OBJECT (pad,
+            "Updating group start time from %" GST_TIME_FORMAT " to %"
+            GST_TIME_FORMAT, GST_TIME_ARGS (self->group_start_time),
+            GST_TIME_ARGS (new_group_start_time));
+        self->group_start_time = new_group_start_time;
+      }
 
       gst_syncstream_unref (stream);
       GST_STREAM_SYNCHRONIZER_UNLOCK (self);
@@ -757,6 +754,8 @@ gst_stream_synchronizer_sink_event (GstPad * pad, GstObject * parent,
     default:
       break;
   }
+
+  event = set_event_rt_offset (self, pad, event);
 
   ret = gst_pad_event_default (pad, parent, event);
 
@@ -1193,14 +1192,7 @@ gst_stream_synchronizer_class_init (GstStreamSynchronizerClass * klass)
       GST_DEBUG_FUNCPTR (gst_stream_synchronizer_request_new_pad);
   element_class->release_pad =
       GST_DEBUG_FUNCPTR (gst_stream_synchronizer_release_pad);
-}
 
-gboolean
-gst_stream_synchronizer_plugin_init (GstPlugin * plugin)
-{
   GST_DEBUG_CATEGORY_INIT (stream_synchronizer_debug,
       "streamsynchronizer", 0, "Stream Synchronizer");
-
-  return gst_element_register (plugin, "streamsynchronizer", GST_RANK_NONE,
-      GST_TYPE_STREAM_SYNCHRONIZER);
 }

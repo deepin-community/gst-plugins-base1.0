@@ -1,21 +1,22 @@
 Source: gst-plugins-base1.0
 Section: libs
 Priority: optional
-Maintainer: Deepin Developer <deepin-dev@deepin.org>
-Uploaders: Deepin Packages Builder <packages@deepin.org>
+Maintainer: Maintainers of GStreamer packages <gst-plugins-base1.0@packages.debian.org>
+Uploaders: Sebastian Dröge <slomo@debian.org>,
            Sjoerd Simons <sjoerd@debian.org>
-Build-Depends: debhelper,
-               debhelper-compat (= 13),
+Build-Depends: debhelper-compat (= 13),
+               dh-sequence-gir,
                dpkg-dev (>= 1.15.1),
                pkg-config (>= 0.11.0),
-               meson (>= 0.48),
+               meson (>= 0.62),
                xvfb,
                xauth,
-               libglib2.0-dev (>= 2.44),
-               libgstreamer1.0-dev (>= 1.18.0),
+               libglib2.0-dev (>= 2.62),
+               libgstreamer1.0-dev (>= 1.22.0),
                liborc-0.4-dev (>= 1:0.4.24),
                zlib1g-dev (>= 1:1.1.4),
                libgl-dev,
+               gstreamer1.0-tools,
                libegl-dev,
                libgles-dev,
                libgraphene-1.0-dev,
@@ -30,6 +31,7 @@ Build-Depends: debhelper,
                libcdparanoia-dev (>= 3.10.2) [!hurd-i386],
                libvisual-0.4-dev (>= 0.4.0),
                libx11-xcb-dev,
+               libxi-dev,
                libxv-dev (>= 6.8.2.dfsg.1-3),
                libxt-dev (>= 6.8.2.dfsg.1-3),
                libasound2-dev (>= 0.9.1) [linux-any],
@@ -40,13 +42,13 @@ Build-Depends: debhelper,
                wayland-protocols (>= 1.15) [linux-any],
                iso-codes,
                libgirepository1.0-dev (>= 0.9.12-4~),
-               gobject-introspection (>= 0.9.12-4~),
                gir1.2-glib-2.0,
                gir1.2-freedesktop,
                gir1.2-gstreamer-1.0
-Standards-Version: 4.5.0
-#Vcs-Git
-#Vcs-Browser
+Rules-Requires-Root: no
+Standards-Version: 4.6.2
+Vcs-Git: https://salsa.debian.org/gstreamer-team/gst-plugins-base1.0.git
+Vcs-Browser: https://salsa.debian.org/gstreamer-team/gst-plugins-base1.0/
 Homepage: https://gstreamer.freedesktop.org
 
 Package: gstreamer1.0-plugins-base-apps
@@ -70,7 +72,6 @@ Description: GStreamer helper programs from the "base" set
 Package: libgstreamer-plugins-base1.0-0
 Architecture: any
 Multi-Arch: same
-Section: libs
 Pre-Depends: ${misc:Pre-Depends}
 Depends: ${misc:Depends},
          ${shlibs:Depends},
@@ -94,7 +95,6 @@ Description: GStreamer libraries from the "base" set
 
 Package: libgstreamer-plugins-base1.0-dev
 Architecture: any
-Multi-Arch: same
 Section: libdevel
 Depends: ${misc:Depends},
          ${shlibs:Depends},
@@ -110,6 +110,9 @@ Depends: ${misc:Depends},
          libgles-dev,
          libx11-xcb-dev,
          libwayland-dev (>= 1.11) [linux-any],
+         libdrm-dev (>= 2.4.55) [linux-any],
+         libgbm-dev [linux-any],
+         libgudev-1.0-dev (>= 147) [linux-any],
          gir1.2-gst-plugins-base-1.0 (= ${binary:Version})
 Breaks: libgstreamer-plugins-bad1.0-dev (<< 1.15.1)
 Conflicts: libgstreamer-plugins-bad1.0-dev (<< 1.15.1)
@@ -127,7 +130,6 @@ Description: GStreamer development files for libraries from the "base" set
 Package: libgstreamer-gl1.0-0
 Architecture: any
 Multi-Arch: same
-Section: libs
 Pre-Depends: ${misc:Pre-Depends}
 Depends: ${misc:Depends},
          ${shlibs:Depends}
@@ -147,10 +149,9 @@ Description: GStreamer GL libraries
 Package: gstreamer1.0-alsa
 Architecture: linux-any
 Multi-Arch: same
-Section: libs
 Depends: ${misc:Depends},
          ${shlibs:Depends},
-         libgstreamer-plugins-base1.0-0 (>= 1.18.0)
+         libgstreamer-plugins-base1.0-0 (>= 1.22.0)
 Suggests: alsa-utils (>= 0.9.0)
 XB-GStreamer-Version: ${gstreamer:Version}
 XB-GStreamer-Elements: ${gstreamer:Elements}
@@ -173,10 +174,9 @@ Description: GStreamer plugin for ALSA
 Package: gstreamer1.0-plugins-base
 Architecture: any
 Multi-Arch: same
-Section: libs
 Depends: ${misc:Depends},
          ${shlibs:Depends},
-         libgstreamer-plugins-base1.0-0 (>= 1.18.0)
+         libgstreamer-plugins-base1.0-0 (>= 1.22.0)
 Breaks: gstreamer1.0-plugins-bad (<< 1.15.1)
 Replaces: gstreamer1.0-plugins-bad (<< 1.15.1)
 Suggests: gvfs
@@ -201,10 +201,9 @@ Description: GStreamer plugins from the "base" set
 Package: gstreamer1.0-x
 Architecture: any
 Multi-Arch: same
-Section: libs
 Depends: ${misc:Depends},
          ${shlibs:Depends},
-         libgstreamer-plugins-base1.0-0 (>= 1.18.0)
+         libgstreamer-plugins-base1.0-0 (>= 1.22.0)
 XB-GStreamer-Version: ${gstreamer:Version}
 XB-GStreamer-Elements: ${gstreamer:Elements}
 XB-GStreamer-URI-Sources: ${gstreamer:URISources}
@@ -227,11 +226,10 @@ Description: GStreamer plugins for X11 and Pango
 Package: gstreamer1.0-gl
 Architecture: any
 Multi-Arch: same
-Section: libs
 Depends: ${misc:Depends},
          ${shlibs:Depends},
-         libgstreamer-plugins-base1.0-0 (>= 1.18.0),
-         libgstreamer-gl1.0-0 (>= 1.18.0)
+         libgstreamer-plugins-base1.0-0 (>= 1.22.0),
+         libgstreamer-gl1.0-0 (>= 1.22.0)
 XB-GStreamer-Version: ${gstreamer:Version}
 XB-GStreamer-Elements: ${gstreamer:Elements}
 XB-GStreamer-URI-Sources: ${gstreamer:URISources}
@@ -259,7 +257,8 @@ Depends: ${gir:Depends},
          ${shlibs:Depends},
          ${misc:Depends}
 Description: GObject introspection data for the GStreamer Plugins Base library
- This package contains introspection data for the GStreamer Plugins Base library.
+ This package contains introspection data for the GStreamer Plugins Base
+ library.
  .
  GStreamer is a streaming media framework, based on graphs of filters
  which operate on media data.  Applications using this library can do
@@ -270,5 +269,3 @@ Description: GObject introspection data for the GStreamer Plugins Base library
  .
  It can be used by packages using the GIRepository format to generate
  dynamic bindings.
-
-

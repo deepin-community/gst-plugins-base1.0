@@ -24,11 +24,15 @@
 #include <locale.h>
 
 #include <gst/gst.h>
-#include <gst/gst-i18n-app.h>
+#include <glib/gi18n.h>
 #include <gst/math-compat.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
 
 GST_DEBUG_CATEGORY (devmon_debug);
 #define GST_CAT_DEFAULT devmon_debug
@@ -144,6 +148,8 @@ print_structure_field (GQuark field_id, const GValue * value,
   if (G_VALUE_HOLDS_UINT (value)) {
     val = g_strdup_printf ("%u (0x%08x)", g_value_get_uint (value),
         g_value_get_uint (value));
+  } else if (G_VALUE_HOLDS_STRING (value)) {
+    val = g_value_dup_string (value);
   } else {
     val = gst_value_serialize (value);
   }
@@ -280,13 +286,14 @@ quit_loop (GMainLoop * loop)
   return G_SOURCE_REMOVE;
 }
 
-int
-main (int argc, char **argv)
+static int
+real_main (int argc, char **argv)
 {
   gboolean print_version = FALSE;
   GError *err = NULL;
   gchar **arg, **args = NULL;
   gboolean follow = FALSE;
+  gboolean include_hidden = FALSE;
   GOptionContext *ctx;
   GOptionEntry options[] = {
     {"version", 0, 0, G_OPTION_ARG_NONE, &print_version,
@@ -294,6 +301,8 @@ main (int argc, char **argv)
     {"follow", 'f', 0, G_OPTION_ARG_NONE, &follow,
         N_("Don't exit after showing the initial device list, but wait "
               "for devices to added/removed."), NULL},
+    {"include-hidden", 'i', 0, G_OPTION_ARG_NONE, &include_hidden,
+        N_("Include devices from hidden device providers."), NULL},
     {G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_STRING_ARRAY, &args, NULL},
     {NULL}
   };
@@ -315,13 +324,22 @@ main (int argc, char **argv)
       "[DEVICE_CLASSES[:FILTER_CAPS]] …");
   g_option_context_add_main_entries (ctx, options, GETTEXT_PACKAGE);
   g_option_context_add_group (ctx, gst_init_get_option_group ());
-  if (!g_option_context_parse (ctx, &argc, &argv, &err)) {
+#ifdef G_OS_WIN32
+  if (!g_option_context_parse_strv (ctx, &argv, &err))
+#else
+  if (!g_option_context_parse (ctx, &argc, &argv, &err))
+#endif
+  {
     g_print ("Error initializing: %s\n", GST_STR_NULL (err->message));
     g_option_context_free (ctx);
     g_clear_error (&err);
     return 1;
   }
   g_option_context_free (ctx);
+
+#ifdef G_OS_WIN32
+  argc = g_strv_length (argv);
+#endif
 
   GST_DEBUG_CATEGORY_INIT (devmon_debug, "device-monitor", 0,
       "gst-device-monitor");
@@ -340,6 +358,7 @@ main (int argc, char **argv)
 
   app.loop = g_main_loop_new (NULL, FALSE);
   app.monitor = gst_device_monitor_new ();
+  gst_device_monitor_set_show_all_devices (app.monitor, include_hidden);
 
   bus = gst_device_monitor_get_bus (app.monitor);
   app.bus_watch_id = gst_bus_add_watch (bus, bus_msg_handler, &app);
@@ -394,4 +413,26 @@ main (int argc, char **argv)
   g_timer_destroy (timer);
 
   return 0;
+}
+
+int
+main (int argc, char *argv[])
+{
+  int ret;
+
+#ifdef G_OS_WIN32
+  argv = g_win32_get_command_line ();
+#endif
+
+#if defined(__APPLE__) && TARGET_OS_MAC && !TARGET_OS_IPHONE
+  ret = gst_macos_main ((GstMainFunc) real_main, argc, argv, NULL);
+#else
+  ret = real_main (argc, argv);
+#endif
+
+#ifdef G_OS_WIN32
+  g_strfreev (argv);
+#endif
+
+  return ret;
 }

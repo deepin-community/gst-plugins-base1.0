@@ -376,8 +376,8 @@ gst_gl_view_convert_set_context (GstGLViewConvert * viewconvert,
 
 static gboolean
 _view_convert_set_format (GstGLViewConvert * viewconvert,
-    GstVideoInfo * in_info, GstGLTextureTarget from_target,
-    GstVideoInfo * out_info, GstGLTextureTarget to_target)
+    const GstVideoInfo * in_info, GstGLTextureTarget from_target,
+    const GstVideoInfo * out_info, GstGLTextureTarget to_target)
 {
   gboolean passthrough;
   g_return_val_if_fail (GST_IS_GL_VIEW_CONVERT (viewconvert), FALSE);
@@ -1444,7 +1444,7 @@ gst_gl_view_convert_get_property (GObject * object, guint prop_id,
  * Converts the data contained by @inbuf using the formats specified by the
  * #GstCaps passed to gst_gl_view_convert_set_caps()
  *
- * Returns: (transfer full): a converted #GstBuffer or %NULL
+ * Returns: (transfer full) (nullable): a converted #GstBuffer or %NULL
  *
  * Since: 1.6
  */

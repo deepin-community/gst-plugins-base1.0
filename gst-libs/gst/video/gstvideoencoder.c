@@ -134,6 +134,9 @@ struct _GstVideoEncoderPrivate
   gint64 min_latency;
   gint64 max_latency;
 
+  /* Tracks whether the latency message was posted at least once */
+  gboolean posted_latency_msg;
+
   /* FIXME 2.0: Use a GQueue or similar, see GstVideoCodecFrame::events */
   GList *current_frame_events;
 
@@ -444,18 +447,6 @@ _flush_events (GstPad * pad, GList * events)
   return NULL;
 }
 
-#if !GLIB_CHECK_VERSION(2, 60, 0)
-#define g_queue_clear_full queue_clear_full
-static void
-queue_clear_full (GQueue * queue, GDestroyNotify free_func)
-{
-  gpointer data;
-
-  while ((data = g_queue_pop_head (queue)) != NULL)
-    free_func (data);
-}
-#endif
-
 static gboolean
 gst_video_encoder_reset (GstVideoEncoder * encoder, gboolean hard)
 {
@@ -524,6 +515,8 @@ gst_video_encoder_reset (GstVideoEncoder * encoder, gboolean hard)
 
     priv->dropped = 0;
     priv->processed = 0;
+
+    priv->posted_latency_msg = FALSE;
   } else {
     GList *l;
 
@@ -674,6 +667,15 @@ _new_output_state (GstCaps * caps, GstVideoCodecState * reference)
 
     GST_VIDEO_INFO_MULTIVIEW_MODE (tgt) = GST_VIDEO_INFO_MULTIVIEW_MODE (ref);
     GST_VIDEO_INFO_MULTIVIEW_FLAGS (tgt) = GST_VIDEO_INFO_MULTIVIEW_FLAGS (ref);
+
+    if (reference->mastering_display_info) {
+      state->mastering_display_info = g_slice_dup (GstVideoMasteringDisplayInfo,
+          reference->mastering_display_info);
+    }
+    if (reference->content_light_level) {
+      state->content_light_level = g_slice_dup (GstVideoContentLightLevel,
+          reference->content_light_level);
+    }
   }
 
   return state;
@@ -683,6 +685,8 @@ static GstVideoCodecState *
 _new_input_state (GstCaps * caps)
 {
   GstVideoCodecState *state;
+  GstStructure *c_struct;
+  const gchar *s;
 
   state = g_slice_new0 (GstVideoCodecState);
   state->ref_count = 1;
@@ -690,6 +694,18 @@ _new_input_state (GstCaps * caps)
   if (G_UNLIKELY (!gst_video_info_from_caps (&state->info, caps)))
     goto parse_fail;
   state->caps = gst_caps_ref (caps);
+
+  c_struct = gst_caps_get_structure (caps, 0);
+
+  if ((s = gst_structure_get_string (c_struct, "mastering-display-info"))) {
+    state->mastering_display_info = g_slice_new (GstVideoMasteringDisplayInfo);
+    gst_video_mastering_display_info_from_string (state->mastering_display_info,
+        s);
+  }
+  if ((s = gst_structure_get_string (c_struct, "content-light-level"))) {
+    state->content_light_level = g_slice_new (GstVideoContentLightLevel);
+    gst_video_content_light_level_from_string (state->content_light_level, s);
+  }
 
   return state;
 
@@ -775,8 +791,8 @@ parse_fail:
 /**
  * gst_video_encoder_proxy_getcaps:
  * @enc: a #GstVideoEncoder
- * @caps: (allow-none): initial caps
- * @filter: (allow-none): filter caps
+ * @caps: (nullable): initial caps
+ * @filter: (nullable): filter caps
  *
  * Returns caps that express @caps (or sink template caps if @caps == NULL)
  * restricted to resolution/format/... combinations supported by downstream
@@ -1815,7 +1831,7 @@ gst_video_encoder_negotiate_default (GstVideoEncoder * encoder)
   g_return_val_if_fail (state->caps != NULL, FALSE);
 
   if (encoder->priv->output_state_changed) {
-    GstCaps *incaps;
+    GstStructure *out_struct;
 
     state->caps = gst_caps_make_writable (state->caps);
 
@@ -1851,9 +1867,18 @@ gst_video_encoder_negotiate_default (GstVideoEncoder * encoder)
           colorimetry, NULL);
     g_free (colorimetry);
 
-    if (info->chroma_site != GST_VIDEO_CHROMA_SITE_UNKNOWN)
-      gst_caps_set_simple (state->caps, "chroma-site", G_TYPE_STRING,
-          gst_video_chroma_to_string (info->chroma_site), NULL);
+    if (info->chroma_site != GST_VIDEO_CHROMA_SITE_UNKNOWN) {
+      gchar *chroma_site = gst_video_chroma_site_to_string (info->chroma_site);
+
+      if (!chroma_site) {
+        GST_WARNING ("Couldn't convert chroma-site 0x%x to string",
+            info->chroma_site);
+      } else {
+        gst_caps_set_simple (state->caps,
+            "chroma-site", G_TYPE_STRING, chroma_site, NULL);
+        g_free (chroma_site);
+      }
+    }
 
     if (GST_VIDEO_INFO_MULTIVIEW_MODE (info) != GST_VIDEO_MULTIVIEW_MODE_NONE) {
       const gchar *caps_mview_mode =
@@ -1865,30 +1890,20 @@ gst_video_encoder_negotiate_default (GstVideoEncoder * encoder)
           GST_VIDEO_INFO_MULTIVIEW_FLAGS (info), GST_FLAG_SET_MASK_EXACT, NULL);
     }
 
-    incaps = gst_pad_get_current_caps (GST_VIDEO_ENCODER_SINK_PAD (encoder));
-    if (incaps) {
-      GstStructure *in_struct;
-      GstStructure *out_struct;
-      const gchar *s;
+    out_struct = gst_caps_get_structure (state->caps, 0);
 
-      in_struct = gst_caps_get_structure (incaps, 0);
-      out_struct = gst_caps_get_structure (state->caps, 0);
+    /* forward upstream mastering display info and content light level
+     * if subclass didn't set */
+    if (state->mastering_display_info &&
+        !gst_structure_has_field (out_struct, "mastering-display-info")) {
+      gst_video_mastering_display_info_add_to_caps
+          (state->mastering_display_info, state->caps);
+    }
 
-      /* forward upstream mastering display info and content light level
-       * if subclass didn't set */
-      if ((s = gst_structure_get_string (in_struct, "mastering-display-info"))
-          && !gst_structure_has_field (out_struct, "mastering-display-info")) {
-        gst_caps_set_simple (state->caps, "mastering-display-info",
-            G_TYPE_STRING, s, NULL);
-      }
-
-      if ((s = gst_structure_get_string (in_struct, "content-light-level")) &&
-          !gst_structure_has_field (out_struct, "content-light-level")) {
-        gst_caps_set_simple (state->caps,
-            "content-light-level", G_TYPE_STRING, s, NULL);
-      }
-
-      gst_caps_unref (incaps);
+    if (state->content_light_level &&
+        !gst_structure_has_field (out_struct, "content-light-level")) {
+      gst_video_content_light_level_add_to_caps (state->content_light_level,
+          state->caps);
     }
 
     encoder->priv->output_state_changed = FALSE;
@@ -2176,7 +2191,8 @@ foreach_metadata (GstBuffer * inbuf, GstMeta ** meta, gpointer user_data)
   const GstMetaInfo *info = (*meta)->info;
   gboolean do_copy = FALSE;
 
-  if (gst_meta_api_type_has_tag (info->api, _gst_meta_tag_memory)) {
+  if (gst_meta_api_type_has_tag (info->api, _gst_meta_tag_memory)
+      || gst_meta_api_type_has_tag (info->api, _gst_meta_tag_memory_reference)) {
     /* never call the transform_meta with memory specific metadata */
     GST_DEBUG_OBJECT (encoder, "not copying memory specific metadata %s",
         g_type_name (info->api));
@@ -2554,6 +2570,9 @@ gst_video_encoder_finish_frame (GstVideoEncoder * encoder,
   frame->distance_from_sync = priv->distance_from_sync;
   priv->distance_from_sync++;
 
+  /* We need a writable buffer for the metadata changes below */
+  frame->output_buffer = gst_buffer_make_writable (frame->output_buffer);
+
   GST_BUFFER_PTS (frame->output_buffer) = frame->pts;
   GST_BUFFER_DTS (frame->output_buffer) = frame->dts;
   GST_BUFFER_DURATION (frame->output_buffer) = frame->duration;
@@ -2700,6 +2719,9 @@ gst_video_encoder_finish_subframe (GstVideoEncoder * encoder,
 
   gst_video_encoder_infer_dts_unlocked (encoder, frame);
 
+  /* We need a writable buffer for the metadata changes below */
+  subframe_buffer = gst_buffer_make_writable (subframe_buffer);
+
   GST_BUFFER_PTS (subframe_buffer) = frame->pts;
   GST_BUFFER_DTS (subframe_buffer) = frame->dts;
   GST_BUFFER_DURATION (subframe_buffer) = frame->duration;
@@ -2756,15 +2778,16 @@ done:
  *
  * Get the current #GstVideoCodecState
  *
- * Returns: (transfer full): #GstVideoCodecState describing format of video data.
+ * Returns: (transfer full) (nullable): #GstVideoCodecState describing format of video data.
  */
 GstVideoCodecState *
 gst_video_encoder_get_output_state (GstVideoEncoder * encoder)
 {
-  GstVideoCodecState *state;
+  GstVideoCodecState *state = NULL;
 
   GST_VIDEO_ENCODER_STREAM_LOCK (encoder);
-  state = gst_video_codec_state_ref (encoder->priv->output_state);
+  if (encoder->priv->output_state)
+    state = gst_video_codec_state_ref (encoder->priv->output_state);
   GST_VIDEO_ENCODER_STREAM_UNLOCK (encoder);
 
   return state;
@@ -2774,7 +2797,7 @@ gst_video_encoder_get_output_state (GstVideoEncoder * encoder)
  * gst_video_encoder_set_output_state:
  * @encoder: a #GstVideoEncoder
  * @caps: (transfer full): the #GstCaps to use for the output
- * @reference: (allow-none) (transfer none): An optional reference @GstVideoCodecState
+ * @reference: (nullable) (transfer none): An optional reference @GstVideoCodecState
  *
  * Creates a new #GstVideoCodecState with the specified caps as the output state
  * for the encoder.
@@ -2795,7 +2818,7 @@ gst_video_encoder_get_output_state (GstVideoEncoder * encoder)
  * The new output state will only take effect (set on pads and buffers) starting
  * from the next call to #gst_video_encoder_finish_frame().
  *
- * Returns: (transfer full): the newly configured output state.
+ * Returns: (transfer full) (nullable): the newly configured output state.
  */
 GstVideoCodecState *
 gst_video_encoder_set_output_state (GstVideoEncoder * encoder, GstCaps * caps,
@@ -2835,30 +2858,49 @@ gst_video_encoder_set_output_state (GstVideoEncoder * encoder, GstCaps * caps,
  * @min_latency: minimum latency
  * @max_latency: maximum latency
  *
- * Informs baseclass of encoding latency.
+ * Informs baseclass of encoding latency. If the provided values changed from
+ * previously provided ones, this will also post a LATENCY message on the bus
+ * so the pipeline can reconfigure its global latency.
  */
 void
 gst_video_encoder_set_latency (GstVideoEncoder * encoder,
     GstClockTime min_latency, GstClockTime max_latency)
 {
+  gboolean post_message = FALSE;
+
   g_return_if_fail (GST_CLOCK_TIME_IS_VALID (min_latency));
   g_return_if_fail (max_latency >= min_latency);
 
+  GST_DEBUG_OBJECT (encoder,
+      "min_latency:%" GST_TIME_FORMAT " max_latency:%" GST_TIME_FORMAT,
+      GST_TIME_ARGS (min_latency), GST_TIME_ARGS (max_latency));
+
   GST_OBJECT_LOCK (encoder);
-  encoder->priv->min_latency = min_latency;
-  encoder->priv->max_latency = max_latency;
+  if (encoder->priv->min_latency != min_latency) {
+    encoder->priv->min_latency = min_latency;
+    post_message = TRUE;
+  }
+  if (encoder->priv->max_latency != max_latency) {
+    encoder->priv->max_latency = max_latency;
+    post_message = TRUE;
+  }
+  if (!encoder->priv->posted_latency_msg) {
+    encoder->priv->posted_latency_msg = TRUE;
+    post_message = TRUE;
+  }
   GST_OBJECT_UNLOCK (encoder);
 
-  gst_element_post_message (GST_ELEMENT_CAST (encoder),
-      gst_message_new_latency (GST_OBJECT_CAST (encoder)));
+  if (post_message)
+    gst_element_post_message (GST_ELEMENT_CAST (encoder),
+        gst_message_new_latency (GST_OBJECT_CAST (encoder)));
 }
 
 /**
  * gst_video_encoder_get_latency:
  * @encoder: a #GstVideoEncoder
- * @min_latency: (out) (allow-none): address of variable in which to store the
+ * @min_latency: (out) (optional): address of variable in which to store the
  *     configured minimum latency, or %NULL
- * @max_latency: (out) (allow-none): address of variable in which to store the
+ * @max_latency: (out) (optional): address of variable in which to store the
  *     configured maximum latency, or %NULL
  *
  * Query the configured encoding latency. Results will be returned via
@@ -2882,7 +2924,7 @@ gst_video_encoder_get_latency (GstVideoEncoder * encoder,
  *
  * Get the oldest unfinished pending #GstVideoCodecFrame
  *
- * Returns: (transfer full): oldest unfinished pending #GstVideoCodecFrame
+ * Returns: (transfer full) (nullable): oldest unfinished pending #GstVideoCodecFrame
  */
 GstVideoCodecFrame *
 gst_video_encoder_get_oldest_frame (GstVideoEncoder * encoder)
@@ -2904,7 +2946,7 @@ gst_video_encoder_get_oldest_frame (GstVideoEncoder * encoder)
  *
  * Get a pending unfinished #GstVideoCodecFrame
  *
- * Returns: (transfer full): pending unfinished #GstVideoCodecFrame identified by @frame_number.
+ * Returns: (transfer full) (nullable): pending unfinished #GstVideoCodecFrame identified by @frame_number.
  */
 GstVideoCodecFrame *
 gst_video_encoder_get_frame (GstVideoEncoder * encoder, int frame_number)
@@ -2953,7 +2995,7 @@ gst_video_encoder_get_frames (GstVideoEncoder * encoder)
 /**
  * gst_video_encoder_merge_tags:
  * @encoder: a #GstVideoEncoder
- * @tags: (allow-none): a #GstTagList to merge, or NULL to unset
+ * @tags: (nullable): a #GstTagList to merge, or NULL to unset
  *     previously-set tags
  * @mode: the #GstTagMergeMode to use, usually #GST_TAG_MERGE_REPLACE
  *
@@ -2996,9 +3038,9 @@ gst_video_encoder_merge_tags (GstVideoEncoder * encoder,
 /**
  * gst_video_encoder_get_allocator:
  * @encoder: a #GstVideoEncoder
- * @allocator: (out) (allow-none) (transfer full): the #GstAllocator
+ * @allocator: (out) (optional) (nullable) (transfer full): the #GstAllocator
  * used
- * @params: (out) (allow-none) (transfer full): the
+ * @params: (out) (optional) (transfer full): the
  * #GstAllocationParams of @allocator
  *
  * Lets #GstVideoEncoder sub-classes to know the memory @allocator

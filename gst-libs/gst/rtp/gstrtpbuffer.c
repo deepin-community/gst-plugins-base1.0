@@ -158,7 +158,7 @@ gst_rtp_buffer_allocate_data (GstBuffer * buffer, guint payload_len,
  * respectively. @data will be freed when the buffer is unreffed, so this
  * function transfers ownership of @data to the new buffer.
  *
- * Returns: A newly allocated buffer with @data and of size @len.
+ * Returns: (transfer full): A newly allocated buffer with @data and of size @len.
  */
 GstBuffer *
 gst_rtp_buffer_new_take_data (gpointer data, gsize len)
@@ -179,12 +179,12 @@ gst_rtp_buffer_new_take_data (gpointer data, gsize len)
  * bytes of @data and the size to @len. The data will be freed when the buffer
  * is freed.
  *
- * Returns: A newly allocated buffer with a copy of @data and of size @len.
+ * Returns: (transfer full): A newly allocated buffer with a copy of @data and of size @len.
  */
 GstBuffer *
 gst_rtp_buffer_new_copy_data (gconstpointer data, gsize len)
 {
-  return gst_rtp_buffer_new_take_data (g_memdup (data, len), len);
+  return gst_rtp_buffer_new_take_data (g_memdup2 (data, len), len);
 }
 
 /**
@@ -197,7 +197,7 @@ gst_rtp_buffer_new_copy_data (gconstpointer data, gsize len)
  * @csrc_count CSRCs, a payload length of @payload_len and padding of @pad_len.
  * All other RTP header fields will be set to 0/FALSE.
  *
- * Returns: A newly allocated buffer that can hold an RTP packet with given
+ * Returns: (transfer full): A newly allocated buffer that can hold an RTP packet with given
  * parameters.
  */
 GstBuffer *
@@ -225,7 +225,7 @@ gst_rtp_buffer_new_allocate (guint payload_len, guint8 pad_len,
  * @csrc_count and can be calculated with gst_rtp_buffer_calc_payload_len().
  * All RTP header fields will be set to 0/FALSE.
  *
- * Returns: A newly allocated buffer that can hold an RTP packet of @packet_len.
+ * Returns: (transfer full): A newly allocated buffer that can hold an RTP packet of @packet_len.
  */
 GstBuffer *
 gst_rtp_buffer_new_allocate_len (guint packet_len, guint8 pad_len,
@@ -684,9 +684,9 @@ gst_rtp_buffer_set_extension (GstRTPBuffer * rtp, gboolean extension)
 /**
  * gst_rtp_buffer_get_extension_data: (skip)
  * @rtp: the RTP packet
- * @bits: (out): location for result bits
- * @data: (out) (array) (element-type guint8) (transfer none): location for data
- * @wordlen: (out): location for length of @data in 32 bits words
+ * @bits: (optional) (out): location for result bits
+ * @data: (optional) (out) (array) (element-type guint8) (transfer none): location for data
+ * @wordlen: (optional) (out): location for length of @data in 32 bits words
  *
  * Get the extension data. @bits will contain the extension 16 bits of custom
  * data. @data will point to the data in the extension and @wordlen will contain
@@ -733,7 +733,7 @@ gst_rtp_buffer_get_extension_data (GstRTPBuffer * rtp, guint16 * bits,
  * @bits unchanged. If there is an extension header but no extension data then
  * an empty #GBytes will be returned.
  *
- * Returns: (transfer full): A new #GBytes if an extension header was present
+ * Returns: (transfer full) (nullable): A new #GBytes if an extension header was present
  * and %NULL otherwise.
  *
  * Since: 1.2
@@ -833,6 +833,8 @@ ensure_buffers (GstRTPBuffer * rtp)
  * extension header. If the existing extension data is not large enough, it will
  * be made larger.
  *
+ * Will also shorten the extension data from 1.20.
+ *
  * Returns: True if done.
  */
 gboolean
@@ -856,15 +858,23 @@ gst_rtp_buffer_set_extension_data (GstRTPBuffer * rtp, guint16 bits,
     mem = gst_allocator_alloc (NULL, min_size, NULL);
 
     if (rtp->data[1]) {
-      /* copy old data */
+      /* copy old data & initialize the remainder of the new buffer */
       gst_memory_map (mem, &map, GST_MAP_WRITE);
       memcpy (map.data, rtp->data[1], rtp->size[1]);
+      if (min_size > rtp->size[1]) {
+        memset (map.data + rtp->size[1], 0, min_size - rtp->size[1]);
+      }
       gst_memory_unmap (mem, &map);
 
       /* unmap old */
       gst_buffer_unmap (rtp->buffer, &rtp->map[1]);
       gst_buffer_replace_memory (rtp->buffer, 1, mem);
     } else {
+      /* don't leak data from uninitialized memory via the padding */
+      gst_memory_map (mem, &map, GST_MAP_WRITE);
+      memset (map.data, 0, map.size);
+      gst_memory_unmap (mem, &map);
+
       /* we didn't have extension data, add */
       gst_buffer_insert_memory (rtp->buffer, 1, mem);
     }
@@ -872,6 +882,15 @@ gst_rtp_buffer_set_extension_data (GstRTPBuffer * rtp, guint16 bits,
     /* map new */
     gst_memory_map (mem, &rtp->map[1], GST_MAP_READWRITE);
     gst_memory_ref (mem);
+    rtp->data[1] = rtp->map[1].data;
+    rtp->size[1] = rtp->map[1].size;
+  } else if (min_size < rtp->size[1]) {
+    GstMemory *mem = rtp->map[1].memory;
+
+    gst_memory_ref (mem);
+    gst_buffer_unmap (rtp->buffer, &rtp->map[1]);
+    gst_memory_resize (mem, 0, min_size);
+    gst_memory_map (mem, &rtp->map[1], GST_MAP_READWRITE);
     rtp->data[1] = rtp->map[1].data;
     rtp->size[1] = rtp->map[1].size;
   }
@@ -885,6 +904,37 @@ gst_rtp_buffer_set_extension_data (GstRTPBuffer * rtp, guint16 bits,
   GST_WRITE_UINT16_BE (data + 2, length);
 
   return TRUE;
+}
+
+/**
+ * gst_rtp_buffer_remove_extension_data:
+ * @rtp: the RTP packet
+ *
+ * Unsets the extension bit of the RTP buffer and removes the extension header
+ * and data.
+ *
+ * If the RTP buffer has no header extension data, the action has no effect.
+ * The RTP buffer must be mapped READWRITE only once and the underlying
+ * GstBuffer must be writable.
+ *
+ * Since: 1.20
+ */
+void
+gst_rtp_buffer_remove_extension_data (GstRTPBuffer * rtp)
+{
+  g_return_if_fail (gst_buffer_is_writable (rtp->buffer));
+  g_return_if_fail (rtp->map[0].flags & GST_MAP_WRITE);
+
+  if (rtp->data[1] != NULL) {
+    GstBuffer *buf = rtp->buffer;
+
+    ensure_buffers (rtp);
+
+    GST_RTP_HEADER_EXTENSION (rtp->data[0]) = FALSE;
+    gst_rtp_buffer_unmap (rtp);
+    gst_buffer_remove_memory (buf, 1);
+    gst_rtp_buffer_map (buf, GST_MAP_READWRITE, rtp);
+  }
 }
 
 /**
@@ -1090,7 +1140,7 @@ gst_rtp_buffer_set_timestamp (GstRTPBuffer * rtp, guint32 timestamp)
  * are skipped in the payload and the subbuffer will be of size @len.
  * If @len is -1 the total payload starting from @offset is subbuffered.
  *
- * Returns: A new buffer with the specified data of the payload.
+ * Returns: (transfer full): A new buffer with the specified data of the payload.
  */
 GstBuffer *
 gst_rtp_buffer_get_payload_subbuffer (GstRTPBuffer * rtp, guint offset,
@@ -1130,7 +1180,7 @@ wrong_offset:
  * will internally create a subbuffer of @buffer so that a memcpy can be
  * avoided.
  *
- * Returns: A new buffer with the data of the payload.
+ * Returns: (transfer full): A new buffer with the data of the payload.
  */
 GstBuffer *
 gst_rtp_buffer_get_payload_buffer (GstRTPBuffer * rtp)
@@ -1160,7 +1210,7 @@ gst_rtp_buffer_get_payload_len (GstRTPBuffer * rtp)
  * Get a pointer to the payload data in @buffer. This pointer is valid as long
  * as a reference to @buffer is held.
  *
- * Returns: (array) (element-type guint8) (transfer none): A pointer
+ * Returns: (array) (element-type guint8) (transfer none) (nullable): A pointer
  * to the payload data in @buffer.
  */
 gpointer
@@ -1183,7 +1233,7 @@ gst_rtp_buffer_get_payload (GstRTPBuffer * rtp)
  * bindings usage. The return value is a pointer to a #GBytes structure
  * containing the payload data in @rtp.
  *
- * Returns: (transfer full): A new #GBytes containing the payload data in @rtp.
+ * Returns: (transfer full) (nullable): A new #GBytes containing the payload data in @rtp.
  *
  * Since: 1.2
  */
@@ -1276,7 +1326,7 @@ gst_rtp_buffer_ext_timestamp (guint64 * exttimestamp, guint32 timestamp)
   ext = *exttimestamp;
 
   if (ext == -1) {
-    result = timestamp;
+    result = (G_GUINT64_CONSTANT (1) << 32) + timestamp;
   } else {
     /* pick wraparound counter from previous timestamp and add to new timestamp */
     result = timestamp + (ext & ~(G_GUINT64_CONSTANT (0xffffffff)));
@@ -1407,9 +1457,9 @@ gst_rtp_buffer_get_extension_onebyte_header_from_bytes (GBytes * bytes,
  * @rtp: the RTP packet
  * @id: The ID of the header extension to be read (between 1 and 14).
  * @nth: Read the nth extension packet with the requested ID
- * @data: (out) (array length=size) (element-type guint8) (transfer none):
+ * @data: (optional) (out) (array length=size) (element-type guint8) (transfer none):
  *   location for data
- * @size: (out): the size of the data in bytes
+ * @size: (optional) (out): the size of the data in bytes
  *
  * Parses RFC 5285 style header extensions with a one byte header. It will
  * return the nth extension with the requested id.
@@ -1437,12 +1487,12 @@ gst_rtp_buffer_get_extension_onebyte_header (GstRTPBuffer * rtp, guint8 id,
 /**
  * gst_rtp_buffer_get_extension_twobytes_header:
  * @rtp: the RTP packet
- * @appbits: (out): Application specific bits
+ * @appbits: (optional) (out): Application specific bits
  * @id: The ID of the header extension to be read (between 1 and 14).
  * @nth: Read the nth extension packet with the requested ID
- * @data: (out) (array length=size) (element-type guint8) (transfer none):
+ * @data: (optional) (out) (array length=size) (element-type guint8) (transfer none):
  *   location for data
- * @size: (out): the size of the data in bytes
+ * @size: (optional) (out): the size of the data in bytes
  *
  * Parses RFC 5285 style header extensions with a two bytes header. It will
  * return the nth extension with the requested id.

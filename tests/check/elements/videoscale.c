@@ -22,8 +22,10 @@
 
 #include <gst/video/video.h>
 #include <gst/base/gstbasesink.h>
+#include <gst/rtp/rtp.h>
 
 #include <gst/check/gstcheck.h>
+#include <gst/check/gstharness.h>
 #include <string.h>
 
 /* kids, don't do this at home, skipping checks is *BAD* */
@@ -125,6 +127,9 @@ check_pad_template (GstPadTemplate * tmpl)
         case GST_VIDEO_FORMAT_NV12_64Z32:
         case GST_VIDEO_FORMAT_NV12_4L4:
         case GST_VIDEO_FORMAT_NV12_32L32:
+        case GST_VIDEO_FORMAT_NV12_16L32S:
+        case GST_VIDEO_FORMAT_NV12_8L128:
+        case GST_VIDEO_FORMAT_NV12_10BE_8L128:
           GST_LOG ("Ignoring lack of support for format %s", fmt_str);
           break;
         default:
@@ -776,6 +781,45 @@ gst_test_reverse_negotiation_sink_init (GstTestReverseNegotiationSink * sink)
   sink->nbuffers = 0;
 }
 
+GST_START_TEST (test_negotiate_alternate)
+{
+  GstHarness *h;
+  GstBuffer *buffer;
+  GstMapInfo map;
+
+  h = gst_harness_new ("videoscale");
+
+  buffer = gst_buffer_new_and_alloc (4);
+  gst_buffer_map (buffer, &map, GST_MAP_WRITE);
+  map.data[0] = 0x0;
+  map.data[1] = 0x0;
+  map.data[2] = 0x0;
+  map.data[3] = 0x0;
+  gst_buffer_unmap (buffer, &map);
+
+  gst_harness_set_sink_caps_str (h, "video/x-raw,width=1,height=1,format=ARGB");
+  gst_harness_set_src_caps_str (h,
+      "video/x-raw(format:Interlaced),interlace-mode=alternate,width=1,height=2,format=ARGB");
+  fail_unless_equals_int (gst_harness_push (h, gst_buffer_ref (buffer)),
+      GST_FLOW_NOT_NEGOTIATED);
+
+  gst_harness_set_sink_caps_str (h,
+      "video/x-raw(format:Interlaced),width=1,height=1,format=ARGB");
+  gst_harness_set_src_caps_str (h,
+      "video/x-raw,interlace-mode=alternate,width=1,height=2,format=ARGB");
+  fail_unless_equals_int (gst_harness_push (h, gst_buffer_ref (buffer)),
+      GST_FLOW_NOT_NEGOTIATED);
+
+  gst_harness_set_sink_caps_str (h,
+      "video/x-raw(format:Interlaced),interlace-mode=alternate,width=1,height=1,format=ARGB");
+  gst_harness_set_src_caps_str (h,
+      "video/x-raw(format:Interlaced),interlace-mode=alternate,width=1,height=2,format=ARGB");
+  fail_unless_equals_int (gst_harness_push (h, buffer), GST_FLOW_OK);
+
+  gst_harness_teardown (h);
+}
+
+GST_END_TEST;
 #if 0
 static void
 _test_reverse_negotiation_message (GstBus * bus, GstMessage * message,
@@ -923,6 +967,54 @@ GST_START_TEST (test_basetransform_negotiation)
 
 GST_END_TEST;
 
+GST_START_TEST (test_transform_meta)
+{
+  GstHarness *h;
+  GstBuffer *buffer;
+  const guint8 data[16] = { 0 };
+  GstCaps *caps;
+  GstVideoRegionOfInterestMeta *roi_meta;
+  GstRTPSourceMeta *rtp_source_meta;
+  guint32 ssrc = 1234;
+
+  h = gst_harness_new ("videoscale");
+
+  buffer = gst_buffer_new_allocate (NULL, sizeof (data), NULL);
+  gst_buffer_fill (buffer, 0, data, sizeof (data));
+
+  caps = gst_caps_new_empty_simple ("timestamp/test");
+  gst_buffer_add_video_region_of_interest_meta (buffer, "face", 0, 1, 2, 3);
+  rtp_source_meta = gst_buffer_add_rtp_source_meta (buffer, &ssrc, NULL, 0);
+
+  gst_harness_set_sink_caps_str (h,
+      "video/x-raw,width=8,height=8,format=GRAY8");
+  gst_harness_set_src_caps_str (h, "video/x-raw,width=4,height=4,format=GRAY8");
+  fail_unless_equals_int (gst_harness_push (h, buffer), GST_FLOW_OK);
+
+  buffer = gst_harness_pull (h);
+  fail_unless_equals_int (gst_buffer_get_n_meta (buffer,
+          GST_VIDEO_REGION_OF_INTEREST_META_API_TYPE), 1);
+
+  roi_meta = gst_buffer_get_video_region_of_interest_meta_id (buffer, 0);
+  fail_unless (roi_meta != NULL);
+  fail_unless_equals_int (roi_meta->roi_type, g_quark_from_string ("face"));
+  fail_unless_equals_int (roi_meta->x, 0);
+  fail_unless_equals_int (roi_meta->y, 2);
+  fail_unless_equals_int (roi_meta->w, 4);
+  fail_unless_equals_int (roi_meta->h, 6);
+
+  rtp_source_meta = gst_buffer_get_rtp_source_meta (buffer);
+  fail_unless (rtp_source_meta != NULL);
+  fail_unless (rtp_source_meta->ssrc_valid);
+  fail_unless_equals_int (rtp_source_meta->ssrc, ssrc);
+
+  gst_buffer_unref (buffer);
+  gst_caps_unref (caps);
+  gst_harness_teardown (h);
+}
+
+GST_END_TEST;
+
 #endif /* !defined(VSCALE_TEST_GROUP) */
 
 static Suite *
@@ -940,10 +1032,12 @@ videoscale_suite (void)
   tcase_add_test (tc_chain, test_passthrough_method_2);
   tcase_add_test (tc_chain, test_passthrough_method_3);
   tcase_add_test (tc_chain, test_negotiation);
+  tcase_add_test (tc_chain, test_negotiate_alternate);
 #if 0
   tcase_add_test (tc_chain, test_reverse_negotiation);
 #endif
   tcase_add_test (tc_chain, test_basetransform_negotiation);
+  tcase_add_test (tc_chain, test_transform_meta);
 #else
 #if VSCALE_TEST_GROUP == 1
   tcase_add_test (tc_chain, test_downscale_640x480_320x240_method_0);

@@ -102,6 +102,8 @@ struct _GstOggPad
 
   GList *continued;
 
+  gboolean need_header_flag;
+
   gboolean discont;
   GstFlowReturn last_ret;       /* last return of _pad_push() */
   gboolean is_eos;
@@ -218,8 +220,6 @@ struct _GstOggDemuxClass
 {
   GstElementClass parent_class;
 };
-
-gboolean gst_ogg_demux_plugin_init (GstPlugin * plugin);
 
 G_END_DECLS
 

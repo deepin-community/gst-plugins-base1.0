@@ -51,7 +51,9 @@
 GST_DEBUG_CATEGORY_STATIC (GST_CAT_GL_BASE_MEMORY);
 #define GST_CAT_DEFUALT GST_CAT_GL_BASE_MEMORY
 
+#ifndef GST_REMOVE_DEPRECATED
 GST_DEFINE_MINI_OBJECT_TYPE (GstGLBaseMemory, gst_gl_base_memory);
+#endif
 
 /**
  * gst_gl_base_memory_error_quark:
@@ -128,8 +130,9 @@ _mem_create_gl (GstGLContext * context, struct create_data *transfer)
  */
 void
 gst_gl_base_memory_init (GstGLBaseMemory * mem, GstAllocator * allocator,
-    GstMemory * parent, GstGLContext * context, GstAllocationParams * params,
-    gsize size, gpointer user_data, GDestroyNotify notify)
+    GstMemory * parent, GstGLContext * context,
+    const GstAllocationParams * params, gsize size, gpointer user_data,
+    GDestroyNotify notify)
 {
   gsize align = gst_memory_alignment, offset = 0, maxsize;
   GstMemoryFlags flags = 0;
@@ -631,7 +634,7 @@ gboolean
 gst_gl_allocation_params_init (GstGLAllocationParams * params,
     gsize struct_size, guint alloc_flags, GstGLAllocationParamsCopyFunc copy,
     GstGLAllocationParamsFreeFunc free, GstGLContext * context,
-    gsize alloc_size, GstAllocationParams * alloc_params,
+    gsize alloc_size, const GstAllocationParams * alloc_params,
     gpointer wrapped_data, gpointer gl_handle, gpointer user_data,
     GDestroyNotify notify)
 {
@@ -663,7 +666,7 @@ gst_gl_allocation_params_init (GstGLAllocationParams * params,
  * @src: the #GstGLAllocationParams to initialize
  *
  * Returns: (transfer full): a copy of the #GstGLAllocationParams specified by
- *          @src or %NULL on failure
+ *          @src
  *
  * Since: 1.8
  */
@@ -748,7 +751,7 @@ G_DEFINE_BOXED_TYPE (GstGLAllocationParams, gst_gl_allocation_params,
  * @allocator: a #GstGLBaseMemoryAllocator
  * @params: the #GstGLAllocationParams to allocate the memory with
  *
- * Returns: a new #GstGLBaseMemory from @allocator with the requested @params.
+ * Returns: (transfer full) (nullable): a new #GstGLBaseMemory from @allocator with the requested @params.
  *
  * Since: 1.8
  */
