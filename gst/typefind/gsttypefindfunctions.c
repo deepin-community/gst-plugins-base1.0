@@ -1047,8 +1047,8 @@ flac_type_find (GstTypeFind * tf, gpointer unused)
     return;
   }
 
-/* disabled because it happily typefinds /dev/urandom as audio/x-flac, and
- * because I yet have to see header-less flac in the wild */
+  /* disabled because it happily typefinds /dev/urandom as audio/x-flac, and
+   * because I yet have to see header-less flac in the wild */
 #if 0
   /* flac without headers (subset format) */
   /* 64K should be enough */
@@ -2073,9 +2073,6 @@ wavpack_type_find (GstTypeFind * tf, gpointer unused)
    * work in pull-mode */
   blocksize = GST_READ_UINT32_LE (data + 4);
   GST_LOG ("wavpack header, blocksize=0x%04x", blocksize);
-  /* If bigger than maximum allowed blocksize, refuse */
-  if (blocksize > 131072)
-    return;
   count_wv = 0;
   count_wvc = 0;
   offset = 32;
@@ -2088,32 +2085,43 @@ wavpack_type_find (GstTypeFind * tf, gpointer unused)
     if (data == NULL)
       break;
     sublen = ((guint32) data[1]) << 1;
+
+    // ID_LARGE
     if (data[0] & 0x80) {
       sublen |= (((guint32) data[2]) << 9) | (((guint32) data[3]) << 17);
       sublen += 1 + 3;          /* id + length */
     } else {
       sublen += 1 + 1;          /* id + length */
     }
+
+    // ID_ODD_SIZE
+    if (data[0] & 0x40) {
+      if (sublen == 0)
+        return;
+      sublen -= 1;
+    }
+
     if (offset + sublen > 8 + blocksize) {
       GST_LOG ("chunk length too big (%u > %" G_GUINT64_FORMAT ")", sublen,
           blocksize - offset);
       break;
     }
-    if ((data[0] & 0x20) == 0) {
-      switch (data[0] & 0x0f) {
-        case 0xa:              /* ID_WV_BITSTREAM  */
-        case 0xc:              /* ID_WVX_BITSTREAM */
-          ++count_wv;
-          break;
-        case 0xb:              /* ID_WVC_BITSTREAM */
-          ++count_wvc;
-          break;
-        default:
-          break;
-      }
-      if (count_wv >= 5 || count_wvc >= 5)
+
+    switch (data[0] & 0x3f) {
+      case 0xa:                /* ID_WV_BITSTREAM  */
+      case 0xc:                /* ID_WVX_BITSTREAM */
+      case 0x2c:               /* ID_WVX_NEW_BITSTREAM */
+        ++count_wv;
+        break;
+      case 0xb:                /* ID_WVC_BITSTREAM */
+        ++count_wvc;
+        break;
+      default:
         break;
     }
+    if (count_wv >= 5 || count_wvc >= 5)
+      break;
+
     offset += sublen;
   }
 
@@ -4864,24 +4872,24 @@ ogganx_type_find (GstTypeFind * tf, gpointer private)
     GstOggStreamType stream_type;
   } markers[] = {
     {
-    "\001vorbis", 7, OGG_AUDIO}, {
-    "\200theora", 7, OGG_VIDEO}, {
-    "fLaC", 4, OGG_AUDIO}, {
-    "\177FLAC", 5, OGG_AUDIO}, {
-    "Speex", 5, OGG_AUDIO}, {
-    "CMML\0\0\0\0", 8, OGG_OTHER}, {
-    "PCM     ", 8, OGG_AUDIO}, {
-    "Annodex", 7, OGG_ANNODEX}, {
-    "fishead", 7, OGG_SKELETON}, {
-    "AnxData", 7, OGG_ANNODEX}, {
-    "CELT    ", 8, OGG_AUDIO}, {
-    "\200kate\0\0\0", 8, OGG_KATE}, {
-    "BBCD\0", 5, OGG_VIDEO}, {
-    "OVP80\1\1", 7, OGG_VIDEO}, {
-    "OpusHead", 8, OGG_AUDIO}, {
-    "\001audio\0\0\0", 9, OGG_AUDIO}, {
-    "\001video\0\0\0", 9, OGG_VIDEO}, {
-    "\001text\0\0\0", 9, OGG_OTHER}
+        "\001vorbis", 7, OGG_AUDIO}, {
+        "\200theora", 7, OGG_VIDEO}, {
+        "fLaC", 4, OGG_AUDIO}, {
+        "\177FLAC", 5, OGG_AUDIO}, {
+        "Speex", 5, OGG_AUDIO}, {
+        "CMML\0\0\0\0", 8, OGG_OTHER}, {
+        "PCM     ", 8, OGG_AUDIO}, {
+        "Annodex", 7, OGG_ANNODEX}, {
+        "fishead", 7, OGG_SKELETON}, {
+        "AnxData", 7, OGG_ANNODEX}, {
+        "CELT    ", 8, OGG_AUDIO}, {
+        "\200kate\0\0\0", 8, OGG_KATE}, {
+        "BBCD\0", 5, OGG_VIDEO}, {
+        "OVP80\1\1", 7, OGG_VIDEO}, {
+        "OpusHead", 8, OGG_AUDIO}, {
+        "\001audio\0\0\0", 9, OGG_AUDIO}, {
+        "\001video\0\0\0", 9, OGG_VIDEO}, {
+        "\001text\0\0\0", 9, OGG_OTHER}
   };
 
   while (c.offset < 4096 && data_scan_ctx_ensure_data (tf, &c, 64)) {

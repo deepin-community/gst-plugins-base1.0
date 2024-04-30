@@ -187,6 +187,9 @@
  * type. The new location may be a relative or an absolute URI. Examples
  * for such redirects can be found in many quicktime movie trailers.
  *
+ * NOTE: playbin3 (via uridecodebin3) will handle the redirect messages if
+ * possible. The message will only be forwarded if it can't handle it.
+ *
  * ## Examples
  * |[
  * gst-launch-1.0 -v playbin3 uri=file:///path/to/somefile.mp4
@@ -1055,6 +1058,8 @@ colorbalance_value_changed_cb (GstColorBalance * balance,
 static void
 gst_play_bin3_init (GstPlayBin3 * playbin)
 {
+  GstCaps *uridecodebin_caps, *subtitle_caps;
+
   g_rec_mutex_init (&playbin->lock);
 
   /* assume we can create an input-selector */
@@ -1069,6 +1074,14 @@ gst_play_bin3_init (GstPlayBin3 * playbin)
   g_object_set (playbin->uridecodebin, "use-buffering", TRUE, NULL);
   gst_bin_add (GST_BIN_CAST (playbin),
       GST_ELEMENT_CAST (playbin->uridecodebin));
+
+  /* Make sure uridecodebin3 knows of all the subtitle formats that playsink can
+   * handle as-is */
+  subtitle_caps = gst_subtitle_overlay_create_factory_caps ();
+  g_object_get (playbin->uridecodebin, "caps", &uridecodebin_caps, NULL);
+  uridecodebin_caps = gst_caps_merge (uridecodebin_caps, subtitle_caps);
+  g_object_set (playbin->uridecodebin, "caps", uridecodebin_caps, NULL);
+  gst_caps_unref (uridecodebin_caps);
 
   g_signal_connect (playbin->uridecodebin, "pad-added",
       G_CALLBACK (pad_added_cb), playbin);
@@ -1187,11 +1200,6 @@ invalid:
 static void
 gst_play_bin3_set_uri (GstPlayBin3 * playbin, const gchar * uri)
 {
-  if (uri == NULL) {
-    g_warning ("cannot set NULL uri");
-    return;
-  }
-
   if (!gst_playbin_uri_is_valid (playbin, uri)) {
     if (g_str_has_prefix (uri, "file:")) {
       GST_WARNING_OBJECT (playbin, "not entirely correct file URI '%s' - make "
@@ -1854,10 +1862,11 @@ gst_play_bin3_send_event (GstElement * element, GstEvent * event)
     /* Don't reconfigure playsink just yet, until the streams-selected
      * message(s) tell us as streams become active / available */
 
+    GST_PLAY_BIN3_UNLOCK (playbin);
+
     /* Send this event directly to uridecodebin, so it works even
      * if uridecodebin didn't add any pads yet */
     res = gst_element_send_event (playbin->uridecodebin, event);
-    GST_PLAY_BIN3_UNLOCK (playbin);
 
     return res;
   }
@@ -2237,7 +2246,7 @@ static void
 control_source_pad (GstPlayBin3 * playbin, GstPad * pad,
     GstPad * combine_pad, GstStreamType stream_type)
 {
-  SourcePad *sourcepad = g_slice_new0 (SourcePad);
+  SourcePad *sourcepad = g_new0 (SourcePad, 1);
 
   sourcepad->pad = pad;
   sourcepad->event_probe_id =
@@ -2415,7 +2424,7 @@ release_source_pad (GstPlayBin3 * playbin,
 
   /* Remove from list of controlled pads and check again for EOS status */
   playbin->source_pads = g_list_remove (playbin->source_pads, sourcepad);
-  g_slice_free (SourcePad, sourcepad);
+  g_free (sourcepad);
 }
 
 /* this function is called when a new pad is added to decodebin. We check the
@@ -2883,11 +2892,6 @@ gst_play_bin3_custom_element_init (GstPlugin * plugin)
   GST_DEBUG_CATEGORY_INIT (gst_play_bin3_debug, "playbin3", 0, "play bin3");
 
   playback_element_init (plugin);
-
-  if (g_getenv ("USE_PLAYBIN3")) {
-    ret &= gst_element_register (plugin, "playbin", GST_RANK_NONE,
-        GST_TYPE_PLAY_BIN);
-  }
 
   ret &= gst_element_register (plugin, "playbin3", GST_RANK_NONE,
       GST_TYPE_PLAY_BIN);

@@ -39,7 +39,7 @@
  * |[
  * gst-launch-1.0 -v videotestsrc pattern=ball name=left \
  *     videotestsrc name=right glstereomix name=mix \
- *     left. ! vid/x-raw,width=640,height=480! glupload ! mix.  \
+ *     left. ! video/x-raw,width=640,height=480! glupload ! mix.  \
  *     right. ! video/x-raw,width=640,height=480! glupload ! mix.  \
  *     mix. ! video/x-raw'(memory:GLMemory)',multiview-mode=side-by-side ! \
  *     queue ! glimagesink output-multiview-mode=side-by-side
@@ -63,6 +63,7 @@
 
 #include "gstglelements.h"
 #include "gstglstereomix.h"
+#include <gst/gl/gl.h>
 
 #define GST_CAT_DEFAULT gst_gl_stereo_mix_debug
 GST_DEBUG_CATEGORY (gst_gl_stereo_mix_debug);
