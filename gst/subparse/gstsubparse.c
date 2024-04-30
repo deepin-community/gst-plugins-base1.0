@@ -95,8 +95,6 @@ G_DEFINE_TYPE (GstSubParse, gst_sub_parse, GST_TYPE_ELEMENT);
 
 GST_ELEMENT_REGISTER_DEFINE_WITH_CODE (subparse, "subparse",
     GST_RANK_PRIMARY, GST_TYPE_SUBPARSE, sub_parse_element_init (plugin))
-
-
      static void gst_sub_parse_dispose (GObject * object)
 {
   GstSubParse *subparse = GST_SUBPARSE (object);
@@ -139,7 +137,7 @@ gst_sub_parse_class_init (GstSubParseClass * klass)
   gst_element_class_add_static_pad_template (element_class, &sink_templ);
   gst_element_class_add_static_pad_template (element_class, &src_templ);
   gst_element_class_set_static_metadata (element_class,
-      "Subtitle parser", "Codec/Parser/Subtitle",
+      "Subtitle parser", "Codec/Decoder/Subtitle",
       "Parses subtitle (.sub) files into text streams",
       "Gustavo J. A. M. Carneiro <gjc@inescporto.pt>, "
       "GStreamer maintainers <gstreamer-devel@lists.freedesktop.org>");

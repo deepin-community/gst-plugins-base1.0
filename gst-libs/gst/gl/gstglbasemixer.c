@@ -1,5 +1,4 @@
-/* Generic video mixer plugin
- *
+/*
  * GStreamer
  * Copyright (C) 2015 Matthew Waters <matthew@centricular.com>
  *
@@ -27,6 +26,20 @@
 #include <gst/video/video.h>
 
 #include "gstglbasemixer.h"
+#include <gst/gl/gl.h>
+
+/**
+ * SECTION:gstglbasemixer
+ * @short_description: #GstVideoAggregator subclass for transforming OpenGL resources
+ * @title: GstGLBaseMixer
+ * @see_also: #GstVideoAggregator, #GstGLMixer
+ *
+ * #GstGLBaseMixer handles the nitty gritty details of retrieving an OpenGL
+ * context.  It provides some virtual methods to know when the OpenGL context
+ * is available and is not available within this element.
+ *
+ * Since: 1.24
+ */
 
 #define GST_CAT_DEFAULT gst_gl_base_mixer_debug
 GST_DEBUG_CATEGORY (gst_gl_base_mixer_debug);
@@ -75,8 +88,6 @@ gst_gl_base_mixer_pad_class_init (GstGLBaseMixerPadClass * klass)
 
   vaggpad_class->prepare_frame = NULL;
   vaggpad_class->clean_frame = NULL;
-
-  gst_type_mark_as_plugin_api (GST_TYPE_GL_BASE_MIXER_PAD, 0);
 }
 
 static void
@@ -186,26 +197,10 @@ _get_gl_context_unlocked (GstGLBaseMixer * mix)
 
   _find_local_gl_context_unlocked (mix);
 
-  GST_OBJECT_LOCK (mix->display);
-  if (!mix->context) {
-    do {
-      if (mix->context) {
-        gst_object_unref (mix->context);
-        mix->context = NULL;
-      }
-      /* just get a GL context.  we don't care */
-      mix->context =
-          gst_gl_display_get_gl_context_for_thread (mix->display, NULL);
-      if (!mix->context) {
-        if (!gst_gl_display_create_context (mix->display,
-                mix->priv->other_context, &mix->context, &error)) {
-          GST_OBJECT_UNLOCK (mix->display);
-          goto context_error;
-        }
-      }
-    } while (!gst_gl_display_add_context (mix->display, mix->context));
+  if (!gst_gl_display_ensure_context (mix->display, mix->priv->other_context,
+          &mix->context, &error)) {
+    goto context_error;
   }
-  GST_OBJECT_UNLOCK (mix->display);
 
   if (new_context || !mix->priv->gl_started) {
     if (mix->priv->gl_started)
@@ -388,6 +383,13 @@ gst_gl_base_mixer_class_init (GstGLBaseMixerClass * klass)
   klass->gl_start = gst_gl_base_mixer_default_gl_start;
   klass->gl_stop = gst_gl_base_mixer_default_gl_stop;
 
+  /**
+   * GstGLBaseMixer:context:
+   *
+   * The #GstGLContext in use by this #GstGLBaseMixer
+   *
+   * Since: 1.24
+   */
   g_object_class_install_property (gobject_class, PROP_CONTEXT,
       g_param_spec_object ("context",
           "OpenGL context",
@@ -398,8 +400,6 @@ gst_gl_base_mixer_class_init (GstGLBaseMixerClass * klass)
   g_type_class_ref (GST_TYPE_GL_BASE_MIXER_PAD);
 
   klass->supported_gl_api = GST_GL_API_ANY;
-
-  gst_type_mark_as_plugin_api (GST_TYPE_GL_BASE_MIXER, 0);
 }
 
 static void
@@ -679,7 +679,7 @@ gst_gl_base_mixer_change_state (GstElement * element, GstStateChange transition)
  *
  * Returns: (transfer full) (nullable): the #GstGLContext found by @mix
  *
- * Since: 1.18
+ * Since: 1.24
  */
 GstGLContext *
 gst_gl_base_mixer_get_gl_context (GstGLBaseMixer * mix)

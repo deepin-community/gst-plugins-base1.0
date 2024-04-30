@@ -150,6 +150,7 @@ struct _StreamGroup
   GstElement *fakesink;         /* Fakesink (can be NULL) */
   GstElement *combiner;
   GstElement *parser;
+  GstElement *timestamper;
   GstElement *smartencoder;
   GstElement *smart_capsfilter;
   gulong smart_capsfilter_sid;
@@ -418,6 +419,10 @@ gst_encode_base_bin_dispose (GObject * object)
     gst_plugin_feature_list_free (ebin->parsers);
   ebin->parsers = NULL;
 
+  if (ebin->timestampers)
+    gst_plugin_feature_list_free (ebin->timestampers);
+  ebin->timestampers = NULL;
+
   gst_encode_base_bin_tear_down_profile (ebin);
 
   if (ebin->raw_video_caps)
@@ -450,6 +455,10 @@ gst_encode_base_bin_init (GstEncodeBaseBin * encode_bin)
   encode_bin->parsers =
       gst_element_factory_list_get_elements (GST_ELEMENT_FACTORY_TYPE_PARSER,
       GST_RANK_MARGINAL);
+
+  encode_bin->timestampers =
+      gst_element_factory_list_get_elements
+      (GST_ELEMENT_FACTORY_TYPE_TIMESTAMPER, GST_RANK_MARGINAL);
 
   encode_bin->raw_video_caps = gst_caps_from_string ("video/x-raw");
   encode_bin->raw_audio_caps = gst_caps_from_string ("audio/x-raw");
@@ -813,14 +822,16 @@ no_stream_group:
   }
 }
 
-/* Create a parser for the given stream profile */
+/* Filters processing elements (can be a parser or a timestamper) from
+ * @all_processors and returns the best fit (or %NULL if none matches)
+ */
 static inline GstElement *
-_get_parser (GstEncodeBaseBin * ebin, GstEncodingProfile * sprof,
-    GstElement * encoder)
+_create_compatible_processor (GList * all_processors,
+    GstEncodingProfile * sprof, GstElement * encoder)
 {
-  GList *parsers1, *parsers, *tmp;
-  GstElement *parser = NULL;
-  GstElementFactory *parserfact = NULL;
+  GList *processors1, *processors, *tmp;
+  GstElement *processor = NULL;
+  GstElementFactory *factory = NULL;
   GstCaps *format = NULL;
 
   if (encoder) {
@@ -835,39 +846,40 @@ _get_parser (GstEncodeBaseBin * ebin, GstEncodingProfile * sprof,
     format = gst_encoding_profile_get_format (sprof);
   }
 
-  GST_DEBUG ("Getting list of parsers for format %" GST_PTR_FORMAT, format);
+  GST_DEBUG ("Getting list of processors for format %" GST_PTR_FORMAT, format);
 
-  /* FIXME : requesting twice the parsers twice is a bit ugly, we should
-   * have a method to request on more than one condition */
-  parsers1 =
-      gst_element_factory_list_filter (ebin->parsers, format,
+  /* FIXME : requesting twice the processing element twice is a bit ugly, we
+   * should have a method to request on more than one condition */
+  processors1 =
+      gst_element_factory_list_filter (all_processors, format,
       GST_PAD_SRC, FALSE);
-  parsers =
-      gst_element_factory_list_filter (parsers1, format, GST_PAD_SINK, FALSE);
-  gst_plugin_feature_list_free (parsers1);
+  processors =
+      gst_element_factory_list_filter (processors1, format, GST_PAD_SINK,
+      FALSE);
+  gst_plugin_feature_list_free (processors1);
 
-  if (G_UNLIKELY (parsers == NULL)) {
-    GST_DEBUG ("Couldn't find any compatible parsers");
+  if (G_UNLIKELY (processors == NULL)) {
+    GST_DEBUG ("Couldn't find any compatible processing element");
     goto beach;
   }
 
-  for (tmp = parsers; tmp; tmp = tmp->next) {
+  for (tmp = processors; tmp; tmp = tmp->next) {
     /* FIXME : We're only picking the first one so far */
     /* FIXME : signal the user if he wants this */
-    parserfact = (GstElementFactory *) tmp->data;
+    factory = (GstElementFactory *) tmp->data;
     break;
   }
 
-  if (parserfact)
-    parser = gst_element_factory_create (parserfact, NULL);
+  if (factory)
+    processor = gst_element_factory_create (factory, NULL);
 
-  gst_plugin_feature_list_free (parsers);
+  gst_plugin_feature_list_free (processors);
 
 beach:
   if (format)
     gst_caps_unref (format);
 
-  return parser;
+  return processor;
 }
 
 static gboolean
@@ -1321,7 +1333,7 @@ setup_smart_encoder (GstEncodeBaseBin * ebin, GstEncodingProfile * sprof,
       gst_caps_make_writable (gst_encoding_profile_get_format (sprof));
   GstCaps *tmpcaps = gst_pad_query_caps (srcpad, NULL);
   const gboolean native_video =
-      ! !(ebin->flags & GST_ENCODEBIN_FLAG_NO_VIDEO_CONVERSION);
+      !!(ebin->flags & GST_ENCODEBIN_FLAG_NO_VIDEO_CONVERSION);
   GstStructure *structure = gst_caps_get_structure (format, 0);
 
   /* Check if stream format is compatible */
@@ -1338,7 +1350,7 @@ setup_smart_encoder (GstEncodeBaseBin * ebin, GstEncodingProfile * sprof,
     goto err;
   }
 
-  parser = _get_parser (ebin, sprof, encoder);
+  parser = _create_compatible_processor (ebin->parsers, sprof, encoder);
   sgroup->smart_capsfilter = gst_element_factory_make ("capsfilter", NULL);
   reencoder_bin = gst_bin_new (NULL);
 
@@ -1440,6 +1452,29 @@ err:
   goto done;
 }
 
+static gboolean
+gst_encode_base_bin_create_src_pad (GstEncodeBaseBin * ebin, GstPad * target)
+{
+  GstPadTemplate *template =
+      gst_element_get_pad_template (GST_ELEMENT (ebin), "src_%u");
+  gchar *name;
+  GstPad *pad;
+
+  GST_OBJECT_LOCK (ebin);
+  name = g_strdup_printf ("src_%u", GST_ELEMENT (ebin)->numsrcpads);
+  GST_OBJECT_UNLOCK (ebin);
+
+  pad = gst_ghost_pad_new_from_template (name, target, template);
+  g_free (name);
+  if (!pad)
+    return FALSE;
+
+  gst_element_add_pad (GST_ELEMENT (ebin), pad);
+
+  return TRUE;
+}
+
+
 /* FIXME : Add handling of streams that don't require conversion elements */
 /*
  * Create the elements, StreamGroup, add the sink pad, link it to the muxer
@@ -1469,7 +1504,7 @@ _create_stream_group (GstEncodeBaseBin * ebin, GstEncodingProfile * sprof,
       GST_PTR_FORMAT, format, sinkcaps);
   GST_DEBUG ("avoid_reencoding:%d", ebin->avoid_reencoding);
 
-  sgroup = g_slice_new0 (StreamGroup);
+  sgroup = g_new0 (StreamGroup, 1);
   sgroup->ebin = ebin;
   sgroup->profile = sprof;
 
@@ -1526,7 +1561,15 @@ _create_stream_group (GstEncodeBaseBin * ebin, GstEncodingProfile * sprof,
     }
     gst_object_unref (muxerpad);
   } else {
-    gst_ghost_pad_set_target (GST_GHOST_PAD (ebin->srcpad), srcpad);
+    if (ebin->srcpad) {
+      gst_ghost_pad_set_target (GST_GHOST_PAD (ebin->srcpad), srcpad);
+    } else {
+      if (!gst_encode_base_bin_create_src_pad (ebin, srcpad)) {
+        gst_object_unref (srcpad);
+
+        goto cant_add_src_pad;
+      }
+    }
   }
   gst_object_unref (srcpad);
   srcpad = NULL;
@@ -1562,7 +1605,9 @@ _create_stream_group (GstEncodeBaseBin * ebin, GstEncodingProfile * sprof,
     goto outfilter_link_failure;
   last = sgroup->outfilter;
 
-  sgroup->parser = _get_parser (ebin, sgroup->profile, sgroup->encoder);
+  sgroup->parser =
+      _create_compatible_processor (ebin->parsers, sgroup->profile,
+      sgroup->encoder);
   if (sgroup->parser != NULL) {
     GST_DEBUG ("Got a parser %s", GST_ELEMENT_NAME (sgroup->parser));
     gst_bin_add (GST_BIN (ebin), sgroup->parser);
@@ -1570,6 +1615,30 @@ _create_stream_group (GstEncodeBaseBin * ebin, GstEncodingProfile * sprof,
     if (G_UNLIKELY (!gst_element_link (sgroup->parser, last)))
       goto parser_link_failure;
     last = sgroup->parser;
+  }
+
+  sgroup->timestamper =
+      _create_compatible_processor (ebin->timestampers, sprof, encoder);
+  if (sgroup->timestamper != NULL) {
+    GST_DEBUG ("Got a timestamper %s", GST_ELEMENT_NAME (sgroup->timestamper));
+    gst_bin_add (GST_BIN (ebin), sgroup->timestamper);
+    tosync = g_list_append (tosync, sgroup->timestamper);
+    if (G_UNLIKELY (!gst_element_link (sgroup->timestamper, last)))
+      goto parser_link_failure;
+
+    last = sgroup->timestamper;
+    if (sgroup->parser) {
+      GstElement *p1 =
+          gst_element_factory_make (GST_OBJECT_NAME (gst_element_get_factory
+              (sgroup->parser)), NULL);
+
+      gst_bin_add (GST_BIN (ebin), p1);
+      tosync = g_list_append (tosync, p1);
+      if (G_UNLIKELY (!gst_element_link (p1, last)))
+        goto parser_link_failure;
+
+      last = p1;
+    }
   }
 
   /* Stream combiner */
@@ -1730,7 +1799,7 @@ _create_stream_group (GstEncodeBaseBin * ebin, GstEncodingProfile * sprof,
   /* FIXME : Once we have properties for specific converters, use those */
   if (GST_IS_ENCODING_VIDEO_PROFILE (sprof)) {
     const gboolean native_video =
-        ! !(ebin->flags & GST_ENCODEBIN_FLAG_NO_VIDEO_CONVERSION);
+        !!(ebin->flags & GST_ENCODEBIN_FLAG_NO_VIDEO_CONVERSION);
     GstElement *cspace = NULL, *scale, *vrate, *cspace2 = NULL;
 
     GST_LOG ("Adding conversion elements for video stream");
@@ -1876,6 +1945,10 @@ _create_stream_group (GstEncodeBaseBin * ebin, GstEncodingProfile * sprof,
 
 splitter_encoding_failure:
   GST_ERROR_OBJECT (ebin, "Error linking splitter to encoding stream");
+  goto cleanup;
+
+cant_add_src_pad:
+  GST_ERROR_OBJECT (ebin, "Couldn't add srcpad to encodebin");
   goto cleanup;
 
 no_muxer_pad:
@@ -2206,22 +2279,10 @@ create_elements_and_pads (GstEncodeBaseBin * ebin)
 
       gst_object_unref (muxerpad);
     } else if (muxerpad) {
-      GstPadTemplate *template =
-          gst_element_get_pad_template (GST_ELEMENT (ebin), "src_%u");
-      gchar *name;
-      GstPad *pad;
-
-      GST_OBJECT_LOCK (ebin);
-      name = g_strdup_printf ("src_%u", GST_ELEMENT (ebin)->numsrcpads);
-      GST_OBJECT_UNLOCK (ebin);
-
-      pad = gst_ghost_pad_new_from_template (name, muxerpad, template);
-      g_free (name);
-      if (!pad)
+      if (!gst_encode_base_bin_create_src_pad (ebin, muxerpad)) {
         goto no_muxer_ghost_pad;
-
+      }
       gst_object_unref (muxerpad);
-      gst_element_add_pad (GST_ELEMENT (ebin), pad);
     }
 
     /* Activate fixed presence streams */
@@ -2464,7 +2525,7 @@ stream_group_free (GstEncodeBaseBin * ebin, StreamGroup * sgroup)
   if (sgroup->outfilter)
     gst_bin_remove ((GstBin *) ebin, sgroup->outfilter);
 
-  g_slice_free (StreamGroup, sgroup);
+  g_free (sgroup);
 }
 
 static void

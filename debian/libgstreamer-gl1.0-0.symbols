@@ -26,7 +26,9 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_buffer_add_gl_sync_meta@Base 1.14.0
  gst_buffer_add_gl_sync_meta_full@Base 1.14.0
  gst_buffer_pool_config_get_gl_allocation_params@Base 1.14.0
+ gst_buffer_pool_config_get_gl_min_free_queue_size@Base 1.23.1
  gst_buffer_pool_config_set_gl_allocation_params@Base 1.14.0
+ gst_buffer_pool_config_set_gl_min_free_queue_size@Base 1.23.1
  gst_context_get_gl_display@Base 1.14.0
  gst_context_set_gl_display@Base 1.14.0
  gst_egl_get_error_string@Base 1.14.0
@@ -34,6 +36,7 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  (arch=linux-any kfreebsd-any)gst_egl_image_from_dmabuf@Base 1.14.0
  (arch=linux-any kfreebsd-any)gst_egl_image_from_dmabuf_direct@Base 1.16.0
  (arch=linux-any kfreebsd-any)gst_egl_image_from_dmabuf_direct_target@Base 1.18.0
+ gst_egl_image_from_dmabuf_direct_target_with_dma_drm@Base 1.23.1
  gst_egl_image_from_texture@Base 1.14.0
  gst_egl_image_get_image@Base 1.14.0
  gst_egl_image_get_type@Base 1.14.0
@@ -69,6 +72,9 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_base_memory_init_once@Base 1.14.0
  gst_gl_base_memory_memcpy@Base 1.14.0
  gst_gl_base_memory_transfer_get_type@Base 1.16.0
+ gst_gl_base_mixer_get_gl_context@Base 1.23.1
+ gst_gl_base_mixer_get_type@Base 1.23.1
+ gst_gl_base_mixer_pad_get_type@Base 1.23.1
  gst_gl_base_src_get_type@Base 1.18.0
  gst_gl_buffer_allocation_params_get_type@Base 1.14.0
  gst_gl_buffer_allocation_params_new@Base 1.14.0
@@ -85,7 +91,9 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_color_convert_new@Base 1.14.0
  gst_gl_color_convert_perform@Base 1.14.0
  gst_gl_color_convert_set_caps@Base 1.14.0
+ gst_gl_color_convert_swizzle_shader_string@Base 1.23.1
  gst_gl_color_convert_transform_caps@Base 1.14.0
+ gst_gl_color_convert_yuv_to_rgb_shader_string@Base 1.23.1
  gst_gl_config_caveat_get_type@Base 1.20.0
  gst_gl_config_caveat_to_string@Base 1.20.0
  gst_gl_config_surface_type_get_type@Base 1.20.0
@@ -139,7 +147,9 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_display_egl_get_from_native@Base 1.14.0
  gst_gl_display_egl_get_type@Base 1.14.0
  gst_gl_display_egl_new@Base 1.14.0
+ gst_gl_display_egl_new_surfaceless@Base 1.23.1
  gst_gl_display_egl_new_with_egl_display@Base 1.14.0
+ gst_gl_display_ensure_context@Base 1.23.1
  gst_gl_display_filter_gl_api@Base 1.14.0
  gst_gl_display_find_window@Base 1.14.0
  gst_gl_display_get_gl_api@Base 1.14.0
@@ -171,6 +181,7 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_format_from_video_info@Base 1.14.0
  gst_gl_format_get_type@Base 1.16.0
  gst_gl_format_is_supported@Base 1.16.0
+ gst_gl_format_n_components@Base 1.23.1
  gst_gl_format_type_from_sized_gl_format@Base 1.16.0
  gst_gl_format_type_n_bytes@Base 1.14.0
  gst_gl_framebuffer_attach@Base 1.14.0
@@ -213,6 +224,11 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_memory_read_pixels@Base 1.14.0
  gst_gl_memory_setup_buffer@Base 1.14.0
  gst_gl_memory_texsubimage@Base 1.14.0
+ gst_gl_mixer_class_add_rgba_pad_templates@Base 1.23.1
+ gst_gl_mixer_get_framebuffer@Base 1.23.1
+ gst_gl_mixer_get_type@Base 1.23.1
+ gst_gl_mixer_pad_get_type@Base 1.23.1
+ gst_gl_mixer_process_textures@Base 1.23.1
  gst_gl_multiply_matrix4@Base 1.20.0
  gst_gl_overlay_compositor_add_caps@Base 1.14.0
  gst_gl_overlay_compositor_draw_overlays@Base 1.14.0
@@ -301,6 +317,7 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_sized_gl_format_from_gl_format_type@Base 1.14.0
  gst_gl_stereo_downmix_get_type@Base 1.16.0
  gst_gl_stereo_downmix_mode_get_type@Base 1.14.0
+ gst_gl_swizzle_invert@Base 1.23.1
  gst_gl_sync_meta_api_get_type@Base 1.14.0
  gst_gl_sync_meta_get_info@Base 1.14.0
  gst_gl_sync_meta_set_sync_point@Base 1.14.0
@@ -312,6 +329,7 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_texture_target_to_buffer_pool_option@Base 1.14.0
  gst_gl_texture_target_to_gl@Base 1.14.0
  gst_gl_texture_target_to_string@Base 1.14.0
+ gst_gl_upload_fixate_caps@Base 1.23.1
  gst_gl_upload_get_caps@Base 1.14.0
  gst_gl_upload_get_input_template_caps@Base 1.14.0
  gst_gl_upload_get_type@Base 1.14.0
@@ -334,6 +352,7 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_video_allocation_params_new_wrapped_data@Base 1.14.0
  gst_gl_video_allocation_params_new_wrapped_gl_handle@Base 1.14.0
  gst_gl_video_allocation_params_new_wrapped_texture@Base 1.14.0
+ gst_gl_video_format_swizzle@Base 1.23.1
  gst_gl_view_convert_fixate_caps@Base 1.14.0
  gst_gl_view_convert_get_output@Base 1.14.0
  gst_gl_view_convert_get_type@Base 1.14.0

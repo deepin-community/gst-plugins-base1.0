@@ -24,3 +24,5 @@ usr/lib/*/gstreamer-1.0/libgstvideorate.so
 usr/lib/*/gstreamer-1.0/libgstvideotestsrc.so
 usr/lib/*/gstreamer-1.0/libgstvolume.so
 usr/lib/*/gstreamer-1.0/libgstvorbis.so
+usr/lib/*/gstreamer-1.0/libgstbasedebug.so
+usr/lib/*/gstreamer-1.0/libgstdsd.so

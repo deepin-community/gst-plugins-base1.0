@@ -21,10 +21,13 @@ tests = [
     'videorate/duplicate_on_eos_disbaled',
     'videorate/duplicate_on_eos_half_sec',
     'videorate/fill_segment_after_caps_changed_before_eos',
+    'videorate/drop_out_of_segment',
     'compositor/renogotiate_failing_unsupported_src_format',
     'giosrc/read-growing-file',
     'encodebin/set-encoder-properties',
     'uridecodebin/expose_raw_pad_caps',
+    'fakevideodec/encoded',
+    'fakevideodec/simple'
 ]
 
 env = environment()
@@ -32,7 +35,7 @@ env.set('GST_PLUGIN_PATH_1_0', meson.global_build_root(), pluginsdirs)
 env.set('GST_PLUGIN_SYSTEM_PATH_1_0', '')
 env.set('GST_REGISTRY', '@0@/@1@.registry'.format(meson.current_build_dir(), 'validate'))
 env.set('GST_PLUGIN_SCANNER_1_0', gst_plugin_scanner_path)
-env.set('GST_PLUGIN_LOADING_WHITELIST', 'gstreamer', 'gst-validate',
+env.set('GST_PLUGIN_LOADING_WHITELIST', 'gstreamer', 'gst-validate', 'debugutilsbad',
     'gst-plugins-base@' + meson.project_build_root())
 
 foreach t: tests

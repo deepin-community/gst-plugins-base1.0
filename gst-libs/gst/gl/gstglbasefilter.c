@@ -278,11 +278,14 @@ gst_gl_base_filter_query (GstBaseTransform * trans, GstPadDirection direction,
   switch (GST_QUERY_TYPE (query)) {
     case GST_QUERY_ALLOCATION:
     {
-      if (direction == GST_PAD_SINK
-          && gst_base_transform_is_passthrough (trans)) {
+      if (direction == GST_PAD_SINK) {
+        /* Ensure we have a GL context before running the query either
+         * downstream or through subclasses */
         _find_local_gl_context (filter);
 
-        return gst_pad_peer_query (GST_BASE_TRANSFORM_SRC_PAD (trans), query);
+        if (gst_base_transform_is_passthrough (trans)) {
+          return gst_pad_peer_query (GST_BASE_TRANSFORM_SRC_PAD (trans), query);
+        }
       }
       break;
     }
@@ -556,24 +559,11 @@ gst_gl_base_filter_find_gl_context_unlocked (GstGLBaseFilter * filter)
     return FALSE;
   }
 
-  if (!filter->context) {
-    GST_OBJECT_LOCK (filter->display);
-    do {
-      if (filter->context)
-        gst_object_unref (filter->context);
-      /* just get a GL context.  we don't care */
-      filter->context =
-          gst_gl_display_get_gl_context_for_thread (filter->display, NULL);
-      if (!filter->context) {
-        if (!gst_gl_display_create_context (filter->display,
-                filter->priv->other_context, &filter->context, &error)) {
-          GST_OBJECT_UNLOCK (filter->display);
-          goto context_error;
-        }
-      }
-    } while (!gst_gl_display_add_context (filter->display, filter->context));
-    GST_OBJECT_UNLOCK (filter->display);
+  if (!gst_gl_display_ensure_context (filter->display,
+          filter->priv->other_context, &filter->context, &error)) {
+    goto context_error;
   }
+
   GST_INFO_OBJECT (filter, "found OpenGL context %" GST_PTR_FORMAT,
       filter->context);
 

@@ -320,8 +320,8 @@ static const gchar *caps_strings[] = {
   "audio/x-wms", "audio/x-voxware", "audio/x-xi", "video/sp5x", "video/vivo",
   "video/x-4xm", "video/x-apple-video", "video/x-camtasia",
   "video/x-cdxa", "video/x-cinepak", "video/x-cirrus-logic-accupak",
-  "video/x-compressed-yuv", "subpicture/x-dvd",
-  "video/x-ffv", "video/x-flash-screen", "video/x-flash-video",
+  "video/x-compressed-yuv", "subpicture/x-dvd", "video/x-ffv",
+  "video/x-ffvhuff", "video/x-flash-screen", "video/x-flash-video",
   "video/x-h261", "video/x-huffyuv", "video/x-intel-h263", "video/x-jpeg",
   "video/x-mjpeg", "video/x-mjpeg-b", "video/mpegts", "video/x-mng",
   "video/x-mszh", "video/x-msvideocodec", "video/x-mve", "video/x-nut",
@@ -1492,6 +1492,28 @@ GST_START_TEST (test_pb_utils_caps_mime_codec)
   caps2 = gst_codec_utils_caps_from_mime_codec (mime_codec);
   fail_unless (gst_caps_is_equal_fixed (caps, caps2));
   gst_caps_unref (caps2);
+  g_free (mime_codec);
+  gst_caps_unref (caps);
+
+  /* vp9 with default chroma subsampling, color primaries, color transfer, color
+   * matrix and luma/chroma encoded in the "legal" range*/
+  caps =
+      gst_caps_from_string
+      ("video/x-vp9, width=(int)640, height=(int)480, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)30/1, chroma-format=(string)4:2:0, bit-depth-luma=(uint)8, bit-depth-chroma=(uint)8, colorimetry=(string)bt709, alignment=(string)super-frame, profile=(string)0, codec-alpha=(boolean)false");
+  mime_codec = gst_codec_utils_caps_get_mime_codec (caps);
+  fail_unless_equals_string (mime_codec, "vp09.00.10.08");
+  g_free (mime_codec);
+  gst_caps_unref (caps);
+
+  /* vp9 with non-default chroma subsampling */
+  caps = gst_caps_from_string ("video/x-vp9, width=(int)640, height=(int)480, "
+      "pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)30/1, "
+      "chroma-format=(string)4:2:2, bit-depth-luma=(uint)8, "
+      "bit-depth-chroma=(uint)8, colorimetry=(string)bt709, "
+      "alignment=(string)super-frame, profile=(string)0, "
+      "codec-alpha=(boolean)false");
+  mime_codec = gst_codec_utils_caps_get_mime_codec (caps);
+  fail_unless_equals_string (mime_codec, "vp09.00.10.08.02.01.01.01.00");
   g_free (mime_codec);
   gst_caps_unref (caps);
 

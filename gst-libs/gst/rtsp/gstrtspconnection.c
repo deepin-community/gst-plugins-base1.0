@@ -135,6 +135,12 @@ gst_rtsp_serialized_message_clear (GstRTSPSerializedMessage * msg)
 #define SEND_FLAGS 0
 #endif
 
+typedef struct
+{
+  gchar *key;
+  gchar *value;
+} GstRTSPExtraHttpHeader;
+
 typedef enum
 {
   TUNNEL_STATE_NONE,
@@ -218,6 +224,9 @@ struct _GstRTSPConnection
 
   gchar *proxy_host;
   guint proxy_port;
+
+  /* HTTP tunneling */
+  GArray *extra_http_headers;
 };
 
 enum
@@ -353,6 +362,26 @@ socket_client_event (GSocketClient * client, GSocketClientEvent event,
   }
 }
 
+static void
+stream0_reset (GstRTSPConnection * conn)
+{
+  if (conn->stream0) {
+    g_object_unref (conn->stream0);
+    conn->stream0 = NULL;
+    conn->socket0 = NULL;
+  }
+  conn->input_stream = NULL;
+  conn->output_stream = NULL;
+  g_free (conn->remote_ip);
+
+  conn->remote_ip = NULL;
+  conn->read_socket = NULL;
+  conn->write_socket = NULL;
+  conn->read_socket_used = FALSE;
+  conn->write_socket_used = FALSE;
+  conn->control_stream = NULL;
+}
+
 /* transfer full */
 static GCancellable *
 get_cancellable (GstRTSPConnection * conn)
@@ -416,6 +445,9 @@ gst_rtsp_connection_create (const GstRTSPUrl * url, GstRTSPConnection ** conn)
   newconn->version = 0;
 
   newconn->content_length_limit = G_MAXUINT;
+
+  newconn->extra_http_headers =
+      g_array_new (FALSE, FALSE, sizeof (GstRTSPExtraHttpHeader));
 
   *conn = newconn;
 
@@ -864,8 +896,23 @@ get_tunneled_connection_uri_strdup (GstRTSPUrl * url, guint16 port)
       url->query ? url->query : "");
 }
 
+static void
+add_extra_headers (GstRTSPMessage * msg, GArray * headers)
+{
+  for (int i = 0; i < headers->len; i++) {
+    GstRTSPExtraHttpHeader *hdr =
+        &g_array_index (headers, GstRTSPExtraHttpHeader, i);
+
+    /* Remove any existing header */
+    gst_rtsp_message_remove_header_by_name (msg, hdr->key, -1);
+
+    /* and add... */
+    gst_rtsp_message_add_header_by_name (msg, hdr->key, hdr->value);
+  }
+}
+
 static GstRTSPResult
-setup_tunneling (GstRTSPConnection * conn, gint64 timeout, gchar * uri,
+setup_tunneling (GstRTSPConnection * conn, gint64 timeout, gchar ** req_uri,
     GstRTSPMessage * response)
 {
   gint i;
@@ -882,6 +929,10 @@ setup_tunneling (GstRTSPConnection * conn, gint64 timeout, gchar * uri,
   gchar *request_uri = NULL;
   gchar *host = NULL;
   GCancellable *cancellable;
+  gchar *uri;
+
+  g_return_val_if_fail (req_uri != NULL, GST_RTSP_EINVAL);
+  uri = *req_uri;
 
   url = conn->url;
 
@@ -905,6 +956,7 @@ setup_tunneling (GstRTSPConnection * conn, gint64 timeout, gchar * uri,
   gst_rtsp_message_add_header (msg, GST_RTSP_HDR_CACHE_CONTROL, "no-cache");
   gst_rtsp_message_add_header (msg, GST_RTSP_HDR_PRAGMA, "no-cache");
   gst_rtsp_message_add_header (msg, GST_RTSP_HDR_HOST, host);
+  add_extra_headers (msg, conn->extra_http_headers);
 
   /* we need to temporarily set conn->tunneled to FALSE to prevent the HTTP
    * request from being base64 encoded */
@@ -924,9 +976,34 @@ setup_tunneling (GstRTSPConnection * conn, gint64 timeout, gchar * uri,
       read_failed);
   conn->manual_http = old_http;
 
-  if (response->type != GST_RTSP_MESSAGE_HTTP_RESPONSE ||
-      response->type_data.response.code != GST_RTSP_STS_OK)
+  if (response->type != GST_RTSP_MESSAGE_HTTP_RESPONSE)
     goto wrong_result;
+
+  switch (response->type_data.response.code) {
+    case GST_RTSP_STS_OK:
+      break;
+    case GST_RTSP_STS_MOVED_PERMANENTLY:
+    case GST_RTSP_STS_MOVE_TEMPORARILY:
+    case GST_RTSP_STS_REDIRECT_TEMPORARILY:
+    case GST_RTSP_STS_REDIRECT_PERMANENTLY:
+    {
+      gchar *location_val = NULL;
+      gst_rtsp_message_get_header (response, GST_RTSP_HDR_LOCATION,
+          &location_val, 0);
+
+      if (location_val != NULL) {
+        GST_TRACE ("redirect (%d) to %s",
+            response->type_data.response.code, location_val);
+        g_free (uri);
+        uri = g_strdup (location_val);
+        *req_uri = uri;
+        res = GST_RTSP_OK_REDIRECT;
+        goto exit;
+      }
+    }
+    default:
+      goto wrong_result;
+  }
 
   if (!conn->ignore_x_server_reply &&
       gst_rtsp_message_get_header (response, GST_RTSP_HDR_X_SERVER_IP_ADDRESS,
@@ -992,6 +1069,7 @@ setup_tunneling (GstRTSPConnection * conn, gint64 timeout, gchar * uri,
       "Sun, 9 Jan 1972 00:00:00 GMT");
   gst_rtsp_message_add_header (msg, GST_RTSP_HDR_CONTENT_LENGTH, "32767");
   gst_rtsp_message_add_header (msg, GST_RTSP_HDR_HOST, host);
+  add_extra_headers (msg, conn->extra_http_headers);
 
   /* we need to temporarily set conn->tunneled to FALSE to prevent the HTTP
    * request from being base64 encoded */
@@ -1073,15 +1151,17 @@ GstRTSPResult
 gst_rtsp_connection_connect_with_response_usec (GstRTSPConnection * conn,
     gint64 timeout, GstRTSPMessage * response)
 {
-  GstRTSPResult res;
+  GstRTSPResult res = GST_RTSP_OK;
   GSocketConnection *connection;
   GSocket *socket;
   GError *error = NULL;
-  gchar *connection_uri, *request_uri, *remote_ip;
+  gchar *connection_uri, *request_uri, *remote_ip, *query = NULL, *path = NULL;
   GstClockTime to;
   guint16 url_port;
   GstRTSPUrl *url;
   GCancellable *cancellable;
+  guint redirect_cnt = 0;
+  GstUri *uri = NULL;
 
   g_return_val_if_fail (conn != NULL, GST_RTSP_EINVAL);
   g_return_val_if_fail (conn->url != NULL, GST_RTSP_EINVAL);
@@ -1101,54 +1181,110 @@ gst_rtsp_connection_connect_with_response_usec (GstRTSPConnection * conn,
     connection_uri = gst_rtsp_url_get_request_uri (url);
   }
 
-  cancellable = get_cancellable (conn);
+  while (res == GST_RTSP_OK) {
+    cancellable = get_cancellable (conn);
 
-  if (conn->proxy_host) {
-    connection = g_socket_client_connect_to_host (conn->client,
-        conn->proxy_host, conn->proxy_port, cancellable, &error);
-    request_uri = g_strdup (connection_uri);
-  } else {
-    connection = g_socket_client_connect_to_uri (conn->client,
-        connection_uri, url_port, cancellable, &error);
+    if (conn->proxy_host) {
+      connection = g_socket_client_connect_to_host (conn->client,
+          conn->proxy_host, conn->proxy_port, cancellable, &error);
+      request_uri = g_strdup (connection_uri);
+    } else {
+      if (uri != NULL) {
+        url_port = gst_uri_get_port (uri);
+      }
+      connection = g_socket_client_connect_to_uri (conn->client,
+          connection_uri, url_port, cancellable, &error);
 
-    /* use the relative component of the uri for non-proxy connections */
-    request_uri = g_strdup_printf ("%s%s%s", url->abspath,
-        url->query ? "?" : "", url->query ? url->query : "");
-  }
+      if (uri == NULL) {
+        /* Use the relative component of the uri for non-proxy connections.
+         * Note: request_uri is not a complete URI, it only contain path +
+         * query.*/
+        request_uri = g_strdup_printf ("%s%s%s", url->abspath,
+            url->query ? "?" : "", url->query ? url->query : "");
+      } else {
+        path = gst_uri_get_path (uri);
+        query = gst_uri_get_query_string (uri);
+        request_uri = g_strdup_printf ("%s%s%s",
+            path, query ? "?" : "", query ? query : "");
+      }
+      g_free (path);
+      g_free (query);
+    }
 
-  g_clear_object (&cancellable);
+    g_clear_object (&cancellable);
 
-  if (connection == NULL)
-    goto connect_failed;
+    if (connection == NULL)
+      goto connect_failed;
 
-  /* get remote address */
-  socket = g_socket_connection_get_socket (connection);
+    /* get remote address */
+    socket = g_socket_connection_get_socket (connection);
 
-  if (!collect_addresses (socket, &remote_ip, NULL, TRUE, &error))
-    goto remote_address_failed;
+    if (!collect_addresses (socket, &remote_ip, NULL, TRUE, &error))
+      goto remote_address_failed;
 
-  g_free (conn->remote_ip);
-  conn->remote_ip = remote_ip;
-  conn->stream0 = G_IO_STREAM (connection);
-  conn->socket0 = socket;
-  /* this is our read socket */
-  conn->read_socket = conn->socket0;
-  conn->write_socket = conn->socket0;
-  conn->read_socket_used = FALSE;
-  conn->write_socket_used = FALSE;
-  conn->input_stream = g_io_stream_get_input_stream (conn->stream0);
-  conn->output_stream = g_io_stream_get_output_stream (conn->stream0);
-  conn->control_stream = NULL;
+    g_free (conn->remote_ip);
+    conn->remote_ip = remote_ip;
+    conn->stream0 = G_IO_STREAM (connection);
+    conn->socket0 = socket;
+    /* this is our read socket */
+    conn->read_socket = conn->socket0;
+    conn->write_socket = conn->socket0;
+    conn->read_socket_used = FALSE;
+    conn->write_socket_used = FALSE;
+    conn->input_stream = g_io_stream_get_input_stream (conn->stream0);
+    conn->output_stream = g_io_stream_get_output_stream (conn->stream0);
+    conn->control_stream = NULL;
 
-  if (conn->tunneled) {
-    res = setup_tunneling (conn, timeout, request_uri, response);
-    if (res != GST_RTSP_OK)
-      goto tunneling_failed;
+    if (conn->tunneled) {
+      res = setup_tunneling (conn, timeout, &request_uri, response);
+      if (res != GST_RTSP_OK) {
+        if (res == GST_RTSP_OK_REDIRECT) {
+          if (conn->proxy_host) {
+            GST_TRACE ("redirect behind proxy is not supported");
+            res = GST_RTSP_ERROR;
+            goto tunneling_failed;
+          }
+
+          GST_LOG ("redirect from %s to %s.", connection_uri, request_uri);
+
+          stream0_reset (conn);
+          connection_uri = request_uri;
+          gst_uri_unref (uri);
+
+          uri = gst_uri_from_string (connection_uri);
+          if (uri == NULL) {
+            GST_TRACE ("failed to parse redirect uri");
+            res = GST_RTSP_ERROR;
+            goto tunneling_failed;
+          }
+
+          conn->url->abspath = gst_uri_get_path (uri);
+          conn->url->host = g_strdup (gst_uri_get_host (uri));
+          conn->url->port = gst_uri_get_port (uri);
+          conn->url->query = gst_uri_get_query_string (uri);
+          res = GST_RTSP_OK;
+
+          /* at most allow 5 redirect */
+          if (redirect_cnt++ > 4) {
+            GST_TRACE ("redirect max reached");
+            res = GST_RTSP_ERROR;
+            goto tunneling_failed;
+          }
+        } else {
+          goto tunneling_failed;
+        }
+      } else {
+        /* Caller must be informed */
+        res = GST_RTSP_OK_REDIRECT;
+      }
+    } else {
+      break;
+    }
   }
   g_free (connection_uri);
   g_free (request_uri);
 
-  return GST_RTSP_OK;
+  return res;
 
   /* ERRORS */
 connect_failed:
@@ -2375,8 +2511,16 @@ parse_line (guint8 * buffer, GstRTSPMessage * msg)
             comma = next_value;
           } else if (*next_value == ' ' && next_value[1] != ',' &&
               next_value[1] != '=' && comma != NULL) {
-            next_value = comma;
-            comma = NULL;
+            /* only process this as a separate header if there is more than just
+             * trailing whitespace after this */
+            for (gchar * curr_char = next_value; *curr_char != '\0';
+                curr_char++) {
+              if (!g_ascii_isspace (*curr_char)) {
+                next_value = comma;
+                comma = NULL;
+                break;
+              }
+            }
             break;
           }
         } else if (*next_value == ',')
@@ -2986,6 +3130,15 @@ gst_rtsp_connection_free (GstRTSPConnection * conn)
   g_timer_destroy (conn->timer);
   gst_rtsp_url_free (conn->url);
   g_free (conn->proxy_host);
+
+  for (gint i = 0; i < conn->extra_http_headers->len; i++) {
+    GstRTSPExtraHttpHeader *header =
+        &g_array_index (conn->extra_http_headers, GstRTSPExtraHttpHeader, i);
+
+    g_free (header->key);
+    g_free (header->value);
+  }
+  g_array_free (conn->extra_http_headers, TRUE);
   g_free (conn);
 
   return res;
@@ -3625,6 +3778,31 @@ gst_rtsp_connection_get_ignore_x_server_reply (const GstRTSPConnection * conn)
   g_return_val_if_fail (conn != NULL, FALSE);
 
   return conn->ignore_x_server_reply;
+}
+
+/**
+ * gst_rtsp_connection_add_extra_http_request_header:
+ * @conn: a #GstRTSPConnection
+ * @key: HTTP header name
+ * @value: HTTP header value
+ *
+ * Add header to be appended to any HTTP request made by connection.
+ * If the header already exists then the old header is replaced by the new header.
+ *
+ * Only applicable in HTTP tunnel mode.
+ *
+ * Since: 1.24
+ */
+void
+gst_rtsp_connection_add_extra_http_request_header (GstRTSPConnection * conn,
+    const gchar * key, const gchar * value)
+{
+  GstRTSPExtraHttpHeader header;
+
+  header.key = strdup (key);
+  header.value = strdup (value);
+
+  g_array_append_val (conn->extra_http_headers, header);
 }
 
 /**
