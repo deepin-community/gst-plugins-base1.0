@@ -566,8 +566,8 @@ if need_platform_egl != 'no'
     gl_platform_deps += egl_dep
     glconf.set('GST_GL_HAVE_PLATFORM_EGL', 1)
 
-    if cc.has_header('libdrm/drm_fourcc.h')
-      gl_misc_deps += allocators_dep
+    if libdrm_dep.type_name() == 'internal' or cc.has_header('drm_fourcc.h', dependencies: libdrm_dep)
+      gl_misc_deps += [allocators_dep, libdrm_dep]
       glconf.set('GST_GL_HAVE_DMABUF', 1)
     endif
 
@@ -1103,8 +1103,8 @@ if build_gstgl
     soversion : soversion,
     darwin_versions : osxversion,
     install : true,
-    dependencies : [gst_base_dep, video_dep, allocators_dep, gmodule_dep,
-                    gl_lib_deps, gl_platform_deps, gl_winsys_deps, gl_misc_deps],
+    dependencies : [gst_base_dep, video_dep, gmodule_dep, gl_lib_deps,
+                    gl_platform_deps, gl_winsys_deps, gl_misc_deps],
     # don't confuse EGL/egl.h with gst-libs/gl/egl/egl.h on case-insensitive file systems
     implicit_include_directories : false)
 
@@ -1113,18 +1113,15 @@ if build_gstgl
     'gl_winsys=' + ' '.join(enabled_gl_winsys),
     'gl_apis=' + ' '.join(enabled_gl_apis),
   ]
-  pkgconfig_installed_variables = [
-    'libinc=-I${libdir}/gstreamer-1.0/include',
-  ]
 
   library_def = {'lib': gstgl}
   pkg_name = 'gstreamer-gl-1.0'
   pkgconfig.generate(gstgl,
     libraries : [gstvideo, gst_base_dep, gst_dep],
-    variables : pkgconfig_variables + pkgconfig_gl_variables + pkgconfig_installed_variables,
+    variables : pkgconfig_variables + pkgconfig_gl_variables,
     uninstalled_variables : pkgconfig_gl_variables,
     subdirs : pkgconfig_subdirs,
-    extra_cflags : ['${libinc}'],
+    extra_cflags : ['-I${libdir}/gstreamer-1.0/include'],
     name : pkg_name,
     description : 'Streaming media framework, OpenGL plugins libraries',
   )

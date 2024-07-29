@@ -78,8 +78,7 @@
 
 #include <math.h>
 
-#include <gst/video/gstvideometa.h>
-#include <gst/video/gstvideopool.h>
+#include <gst/video/video.h>
 
 #include "gstvideoconvertscale.h"
 
@@ -140,8 +139,6 @@ GST_DEBUG_CATEGORY_STATIC (CAT_PERFORMANCE);
 #define DEFAULT_PROP_PRIMARIES_MODE GST_VIDEO_PRIMARIES_MODE_NONE
 #define DEFAULT_PROP_N_THREADS 1
 
-static GQuark _colorspace_quark;
-
 enum
 {
   PROP_0,
@@ -185,6 +182,7 @@ static GstStaticCaps gst_video_convert_scale_format_caps =
 
 static GQuark _size_quark;
 static GQuark _scale_quark;
+static GQuark _tags_quark;
 
 #define GST_TYPE_VIDEO_SCALE_METHOD (gst_video_scale_method_get_type())
 static GType
@@ -264,9 +262,6 @@ static void gst_video_convert_scale_set_property (GObject * object,
 static void gst_video_convert_scale_get_property (GObject * object,
     guint prop_id, GValue * value, GParamSpec * pspec);
 
-static GstCapsFeatures *features_format_interlaced,
-    *features_format_interlaced_sysmem;
-
 static gboolean
 gst_video_convert_scale_filter_meta (GstBaseTransform * trans, GstQuery * query,
     GType api, const GstStructure * params)
@@ -292,15 +287,6 @@ gst_video_convert_scale_class_init (GstVideoConvertScaleClass * klass)
   GST_DEBUG_CATEGORY_INIT (video_convertscale_debug, "videoconvertscale", 0,
       "videoconvertscale element");
   GST_DEBUG_CATEGORY_GET (CAT_PERFORMANCE, "GST_PERFORMANCE");
-
-  features_format_interlaced =
-      gst_caps_features_new (GST_CAPS_FEATURE_FORMAT_INTERLACED, NULL);
-  features_format_interlaced_sysmem =
-      gst_caps_features_copy (features_format_interlaced);
-  gst_caps_features_add (features_format_interlaced_sysmem,
-      GST_CAPS_FEATURE_MEMORY_SYSTEM_MEMORY);
-
-  _colorspace_quark = g_quark_from_static_string ("colorspace");
 
   gobject_class->finalize =
       (GObjectFinalizeFunc) gst_video_convert_scale_finalize;
@@ -409,6 +395,7 @@ gst_video_convert_scale_class_init (GstVideoConvertScaleClass * klass)
 
   _size_quark = g_quark_from_static_string (GST_META_TAG_VIDEO_SIZE_STR);
   _scale_quark = gst_video_meta_transform_scale_get_quark ();
+  _tags_quark = g_quark_from_static_string ("tags");
 
   gst_type_mark_as_plugin_api (GST_TYPE_VIDEO_SCALE_METHOD, 0);
   trans_class->transform_caps =
@@ -610,6 +597,33 @@ gst_video_convert_scale_get_property (GObject * object, guint prop_id,
   GST_OBJECT_UNLOCK (object);
 }
 
+static gboolean
+gst_video_convert_is_supported_caps_features (const GstCapsFeatures * features)
+{
+  if (gst_caps_features_is_any (features))
+    return FALSE;
+
+  // Check if all features are supported ones
+  guint n_features = gst_caps_features_get_size (features);
+  for (guint i = 0; i < n_features; i++) {
+    const gchar *feature = gst_caps_features_get_nth (features, i);
+
+    if (strcmp (feature, GST_CAPS_FEATURE_MEMORY_SYSTEM_MEMORY) == 0)
+      continue;
+
+    if (strcmp (feature, GST_CAPS_FEATURE_FORMAT_INTERLACED) == 0)
+      continue;
+
+    if (strcmp (feature,
+            GST_CAPS_FEATURE_META_GST_VIDEO_OVERLAY_COMPOSITION) == 0)
+      continue;
+
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
 static GstCaps *
 gst_video_convert_caps_remove_format_and_rangify_size_info (GstVideoConvertScale
     * self, GstCaps * caps)
@@ -634,12 +648,7 @@ gst_video_convert_caps_remove_format_and_rangify_size_info (GstVideoConvertScale
 
     structure = gst_structure_copy (structure);
     /* Only remove format info for the cases when we can actually convert */
-    if (!gst_caps_features_is_any (features)
-        && (gst_caps_features_is_equal (features,
-                GST_CAPS_FEATURES_MEMORY_SYSTEM_MEMORY)
-            || gst_caps_features_is_equal (features, features_format_interlaced)
-            || gst_caps_features_is_equal (features,
-                features_format_interlaced_sysmem))) {
+    if (gst_video_convert_is_supported_caps_features (features)) {
       if (klass->scales) {
         gst_structure_set (structure, "width", GST_TYPE_INT_RANGE, 1, G_MAXINT,
             "height", GST_TYPE_INT_RANGE, 1, G_MAXINT, NULL);
@@ -686,45 +695,45 @@ gst_video_convert_scale_transform_caps (GstBaseTransform * trans,
   return ret;
 }
 
+/* This is public API in 1.28 */
+static gboolean
+gst_meta_api_type_tags_contain_only (GType api, const gchar ** valid_tags)
+{
+  const gchar **tags, **curr;
+  g_return_val_if_fail (api != 0, FALSE);
+
+  tags = g_type_get_qdata (api, _tags_quark);
+
+  if (!tags)
+    return TRUE;
+
+  for (curr = tags; *curr; ++curr) {
+
+    if (!g_strv_contains (valid_tags, *curr)) {
+      return FALSE;
+    }
+  }
+
+  return TRUE;
+}
+
 static gboolean
 gst_video_convert_scale_transform_meta (GstBaseTransform * trans,
     GstBuffer * outbuf, GstMeta * meta, GstBuffer * inbuf)
 {
   GstVideoFilter *videofilter = GST_VIDEO_FILTER (trans);
   const GstMetaInfo *info = meta->info;
-  const gchar *const *tags;
-  const gchar *const *curr = NULL;
   gboolean should_copy = TRUE;
-  const gchar *const valid_tags[] = {
+  const gchar *valid_tags[] = {
     GST_META_TAG_VIDEO_STR,
     GST_META_TAG_VIDEO_ORIENTATION_STR,
     GST_META_TAG_VIDEO_SIZE_STR,
+    /* don't copy colorspace specific metadata, FIXME, we need a MetaTransform
+     * for the colorspace metadata. */
     NULL
   };
 
-  tags = gst_meta_api_type_get_tags (info->api);
-
-  /* No specific tags, we are good to copy */
-  if (!tags) {
-    return TRUE;
-  }
-
-  if (gst_meta_api_type_has_tag (info->api, _colorspace_quark)) {
-    /* don't copy colorspace specific metadata, FIXME, we need a MetaTransform
-     * for the colorspace metadata. */
-    return FALSE;
-  }
-
-  /* We are only changing size, we can preserve other metas tagged as
-     orientation and colorspace */
-  for (curr = tags; *curr; ++curr) {
-
-    /* We dont handle any other tag */
-    if (!g_strv_contains (valid_tags, *curr)) {
-      should_copy = FALSE;
-      break;
-    }
-  }
+  should_copy = gst_meta_api_type_tags_contain_only (info->api, valid_tags);
 
   /* Cant handle the tags in this meta, let the parent class handle it */
   if (!should_copy) {
