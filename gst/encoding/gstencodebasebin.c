@@ -831,8 +831,18 @@ _create_compatible_processor (GList * all_processors,
 {
   GList *processors1, *processors, *tmp;
   GstElement *processor = NULL;
-  GstElementFactory *factory = NULL;
   GstCaps *format = NULL;
+  GstCaps *encoding_format = NULL;
+  GstStructure *s;
+  const gchar *encoding_media_type;
+
+  encoding_format = gst_encoding_profile_get_format (sprof);
+  if (G_UNLIKELY (gst_caps_is_empty (encoding_format))) {
+    return NULL;
+  }
+
+  s = gst_caps_get_structure (encoding_format, 0);
+  encoding_media_type = gst_structure_get_name (s);
 
   if (encoder) {
     GstPadTemplate *template = gst_element_get_pad_template (encoder, "src");
@@ -843,7 +853,7 @@ _create_compatible_processor (GList * all_processors,
 
   if (!format || gst_caps_is_any (format)) {
     gst_clear_caps (&format);
-    format = gst_encoding_profile_get_format (sprof);
+    format = gst_caps_ref (encoding_format);
   }
 
   GST_DEBUG ("Getting list of processors for format %" GST_PTR_FORMAT, format);
@@ -864,20 +874,42 @@ _create_compatible_processor (GList * all_processors,
   }
 
   for (tmp = processors; tmp; tmp = tmp->next) {
-    /* FIXME : We're only picking the first one so far */
-    /* FIXME : signal the user if he wants this */
-    factory = (GstElementFactory *) tmp->data;
+    GstElementFactory *candidate_factory = GST_ELEMENT_FACTORY_CAST (tmp->data);
+    GstPadTemplate *tmpl;
+    GstCaps *processor_caps;
+    gboolean is_compatible = FALSE;
+
+    processor = gst_element_factory_create (candidate_factory, NULL);
+    tmpl = gst_element_get_pad_template (processor, "sink");
+    processor_caps = gst_pad_template_get_caps (tmpl);
+
+    if (gst_caps_is_any (processor_caps)) {
+      is_compatible = TRUE;
+    } else if (!gst_caps_is_empty (processor_caps)) {
+      GstStructure *structure = gst_caps_get_structure (processor_caps, 0);
+      if (!strcmp (encoding_media_type, gst_structure_get_name (structure))) {
+        is_compatible = TRUE;
+      }
+    }
+
+    gst_clear_caps (&processor_caps);
+
+    if (!is_compatible) {
+      GST_DEBUG ("Processor %" GST_PTR_FORMAT " is not compatible with format %"
+          GST_PTR_FORMAT, processor, encoding_format);
+      gst_clear_object (&processor);
+      continue;
+    }
+
+    /* FIXME : signal the user if he wants this parser */
     break;
   }
-
-  if (factory)
-    processor = gst_element_factory_create (factory, NULL);
 
   gst_plugin_feature_list_free (processors);
 
 beach:
-  if (format)
-    gst_caps_unref (format);
+  gst_clear_caps (&format);
+  gst_clear_caps (&encoding_format);
 
   return processor;
 }
@@ -1562,6 +1594,7 @@ _create_stream_group (GstEncodeBaseBin * ebin, GstEncodingProfile * sprof,
     gst_object_unref (muxerpad);
   } else {
     if (ebin->srcpad) {
+      /* encodebin static source pad */
       gst_ghost_pad_set_target (GST_GHOST_PAD (ebin->srcpad), srcpad);
     } else {
       if (!gst_encode_base_bin_create_src_pad (ebin, srcpad)) {
@@ -2272,6 +2305,7 @@ create_elements_and_pads (GstEncodeBaseBin * ebin)
      * but for the time being let's assume it's a static pad :) */
     muxerpad = gst_element_get_static_pad (muxer, "src");
     if (ebin->srcpad) {
+      /* encodebin static source pad */
       if (G_UNLIKELY (muxerpad == NULL))
         goto no_muxer_pad;
       if (!gst_ghost_pad_set_target (GST_GHOST_PAD (ebin->srcpad), muxerpad))
@@ -2426,7 +2460,9 @@ stream_group_free (GstEncodeBaseBin * ebin, StreamGroup * sgroup)
   if (sgroup->parser) {
     gst_element_set_state (sgroup->parser, GST_STATE_NULL);
     gst_element_unlink (sgroup->parser, sgroup->outfilter);
-    gst_element_unlink (sgroup->combiner, sgroup->parser);
+    if (sgroup->combiner) {
+      gst_element_unlink (sgroup->combiner, sgroup->parser);
+    }
     gst_bin_remove ((GstBin *) ebin, sgroup->parser);
   }
 
@@ -2551,7 +2587,7 @@ gst_encode_base_bin_tear_down_profile (GstEncodeBaseBin * ebin)
     stream_group_remove (ebin, (StreamGroup *) ebin->streams->data);
 
   if (ebin->srcpad) {
-    /* Set ghostpad target to NULL */
+    /* encodebin static source pad, set ghostpad target to NULL */
     gst_ghost_pad_set_target (GST_GHOST_PAD (ebin->srcpad), NULL);
   }
 
@@ -2564,7 +2600,8 @@ gst_encode_base_bin_tear_down_profile (GstEncodeBaseBin * ebin)
     ebin->muxer = NULL;
   }
 
-  if (!element->srcpads) {
+  if (!ebin->srcpad) {
+    /* encodebin2 dynamic source pads */
     while (element->srcpads)
       gst_element_remove_pad (element, element->srcpads->data);
   }

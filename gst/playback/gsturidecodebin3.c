@@ -167,9 +167,6 @@ struct _GstSourcePad
   /* Decodebin3 pad to which src_pad is linked to */
   GstPad *db3_sink_pad;
 
-  /* TRUE if db3_sink_pad is a request pad */
-  gboolean db3_pad_is_request;
-
   /* TRUE if EOS went through the source pad. Marked as TRUE if decodebin3
    * notified `about-to-finish` for pull mode */
   gboolean saw_eos;
@@ -675,10 +672,19 @@ db_src_probe (GstPad * pad, GstPadProbeInfo * info, OutputPad * output)
   switch (GST_EVENT_TYPE (event)) {
     case GST_EVENT_EOS:
     {
+      gboolean drop_event = FALSE;
+      GstPlayItem *last;
+
+      PLAY_ITEMS_LOCK (uridecodebin);
+      last = g_list_last (uridecodebin->play_items)->data;
+
       /* If there is a next input, drop the EOS event */
       if (uridecodebin->input_item != uridecodebin->output_item ||
-          uridecodebin->input_item !=
-          g_list_last (uridecodebin->play_items)->data) {
+          uridecodebin->input_item != last) {
+        drop_event = TRUE;
+      }
+      PLAY_ITEMS_UNLOCK (uridecodebin);
+      if (drop_event) {
         GST_DEBUG_OBJECT (uridecodebin,
             "Dropping EOS event because in gapless mode");
         return GST_PAD_PROBE_DROP;
@@ -972,26 +978,14 @@ activate_source_item (GstSourceItem * item)
   return GST_STATE_CHANGE_SUCCESS;
 }
 
+/* PLAY_ITEMS_LOCK held */
 static void
 link_src_pad_to_db3 (GstURIDecodeBin3 * uridecodebin, GstSourcePad * spad)
 {
   GstSourceHandler *handler = spad->handler;
   GstPad *sinkpad = NULL;
 
-  /* Try to link to main sink pad only if it's from a main handler */
-  if (handler->is_main_source) {
-    sinkpad = gst_element_get_static_pad (uridecodebin->decodebin, "sink");
-    if (gst_pad_is_linked (sinkpad)) {
-      gst_object_unref (sinkpad);
-      sinkpad = NULL;
-    }
-  }
-
-  if (sinkpad == NULL) {
-    sinkpad =
-        gst_element_request_pad_simple (uridecodebin->decodebin, "sink_%u");
-    spad->db3_pad_is_request = TRUE;
-  }
+  sinkpad = gst_element_request_pad_simple (uridecodebin->decodebin, "sink_%u");
 
   if (sinkpad) {
     GstPadLinkReturn res;
@@ -1018,6 +1012,10 @@ link_src_pad_to_db3 (GstURIDecodeBin3 * uridecodebin, GstSourcePad * spad)
       && !handler->play_item->sub_item->handler) {
     GstStateChangeReturn ret;
 
+    /* Temporarily release play items lock to avoid deadlock if activating the
+     * source item causes a message that calls back into our message handler */
+    PLAY_ITEMS_UNLOCK (uridecodebin);
+
     /* The state lock is taken to ensure we can atomically change the
      * urisourcebin back to NULL in case of failures */
     GST_STATE_LOCK (uridecodebin);
@@ -1029,9 +1027,11 @@ link_src_pad_to_db3 (GstURIDecodeBin3 * uridecodebin, GstSourcePad * spad)
           FALSE);
       handler->play_item->sub_item->handler = NULL;
       GST_STATE_UNLOCK (uridecodebin);
+      PLAY_ITEMS_LOCK (uridecodebin);
       goto sub_item_activation_failed;
     }
     GST_STATE_UNLOCK (uridecodebin);
+    PLAY_ITEMS_LOCK (uridecodebin);
   }
 
   return;
@@ -1119,7 +1119,6 @@ switch_and_activate_input_locked (GstURIDecodeBin3 * uridecodebin,
           GST_DEBUG_PAD_NAME (new_spad->src_pad));
       gst_pad_unlink (old_spad->src_pad, old_spad->db3_sink_pad);
       new_spad->db3_sink_pad = old_spad->db3_sink_pad;
-      new_spad->db3_pad_is_request = old_spad->db3_pad_is_request;
       old_spad->db3_sink_pad = NULL;
 
       /* NOTE : Pad will be linked further down */
@@ -1130,37 +1129,10 @@ switch_and_activate_input_locked (GstURIDecodeBin3 * uridecodebin,
     }
   }
 
-  /* If the old pads contains the static decodebin3 sinkpad *and* we have a new
-   *  pad to activate, we re-use it */
-  if (to_activate) {
-    /* Remove unmatched old source pads */
-    for (iterold = old_pads; iterold; iterold = iterold->next) {
-      GstSourcePad *old_spad = iterold->data;
-      if (old_spad->db3_sink_pad && !old_spad->db3_pad_is_request) {
-        GstSourcePad *new_spad = to_activate->data;
-
-        GST_DEBUG_OBJECT (uridecodebin, "Static sinkpad can be re-used");
-        GST_DEBUG_OBJECT (uridecodebin, "Relinking %s:%s from %s:%s to %s:%s",
-            GST_DEBUG_PAD_NAME (old_spad->db3_sink_pad),
-            GST_DEBUG_PAD_NAME (old_spad->src_pad),
-            GST_DEBUG_PAD_NAME (new_spad->src_pad));
-        gst_pad_unlink (old_spad->src_pad, old_spad->db3_sink_pad);
-        new_spad->db3_sink_pad = old_spad->db3_sink_pad;
-        new_spad->db3_pad_is_request = old_spad->db3_pad_is_request;
-        old_spad->db3_sink_pad = NULL;
-
-        /* NOTE : Pad will be linked further down */
-        old_pads = g_list_remove (old_pads, old_spad);
-        to_activate = g_list_remove (to_activate, new_spad);
-        break;
-      }
-    }
-  }
-
   /* Remove unmatched old source pads */
   for (iterold = old_pads; iterold; iterold = iterold->next) {
     GstSourcePad *old_spad = iterold->data;
-    if (old_spad->db3_sink_pad && old_spad->db3_pad_is_request) {
+    if (old_spad->db3_sink_pad) {
       GST_DEBUG_OBJECT (uridecodebin, "Releasing no longer used db3 pad");
       gst_element_release_request_pad (uridecodebin->decodebin,
           old_spad->db3_sink_pad);
@@ -1496,7 +1468,7 @@ src_pad_removed_cb (GstElement * element, GstPad * pad,
       "Source %" GST_PTR_FORMAT " removed pad %" GST_PTR_FORMAT " peer %"
       GST_PTR_FORMAT, element, pad, spad->db3_sink_pad);
 
-  if (spad->db3_sink_pad && spad->db3_pad_is_request)
+  if (spad->db3_sink_pad)
     gst_element_release_request_pad (uridecodebin->decodebin,
         spad->db3_sink_pad);
 
@@ -2213,6 +2185,35 @@ gst_uri_decode_bin3_handle_message (GstBin * bin, GstMessage * msg)
   GstURIDecodeBin3 *uridecodebin = (GstURIDecodeBin3 *) bin;
 
   switch (GST_MESSAGE_TYPE (msg)) {
+    case GST_MESSAGE_STREAM_COLLECTION:
+    {
+      GstSourceHandler *handler;
+      GST_DEBUG_OBJECT (uridecodebin, "Handle stream collection");
+      PLAY_ITEMS_LOCK (uridecodebin);
+      /* Find the matching handler (if any) */
+      if ((handler = find_source_handler_for_element (uridecodebin, msg->src))) {
+        gboolean selectable = FALSE;
+        GstQuery *query = gst_query_new_selectable ();
+        /* We only want to forward this message if the source is selectable,
+         * else we will let decodebin3 do its emission. */
+        if (gst_element_query ((GstElement *) msg->src, query)) {
+          gst_query_parse_selectable (query, &selectable);
+          GST_DEBUG_OBJECT (uridecodebin,
+              "%s is selectable : %d",
+              GST_ELEMENT_NAME (handler->urisourcebin), selectable);
+        }
+        gst_query_unref (query);
+        if (!selectable) {
+          GST_DEBUG_OBJECT (uridecodebin,
+              "%s doesn't handle selection, dropping stream-collection message",
+              GST_ELEMENT_NAME (handler->urisourcebin));
+          gst_message_unref (msg);
+          msg = NULL;
+        }
+      }
+      PLAY_ITEMS_UNLOCK (uridecodebin);
+      break;
+    }
     case GST_MESSAGE_STREAMS_SELECTED:
     {
       GstSourceHandler *handler;

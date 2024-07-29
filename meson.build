@@ -1,5 +1,5 @@
 project('gst-plugins-base', 'c',
-  version : '1.24.6',
+  version : '1.24.13',
   meson_version : '>= 1.1',
   default_options : [ 'warning_level=1',
                       'buildtype=debugoptimized' ])
@@ -197,6 +197,7 @@ check_functions = [
   ['HAVE_LRINTF', 'lrintf', '#include<math.h>'],
   ['HAVE_MMAP', 'mmap', '#include<sys/mman.h>'],
   ['HAVE_LOG2', 'log2', '#include<math.h>'],
+  ['HAVE_MEMMEM', 'memmem', '#include<string.h>'],
 ]
 
 libm = cc.find_library('m', required : false)
