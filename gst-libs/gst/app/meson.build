@@ -1,4 +1,4 @@
-app_sources = files(['gstappsrc.c', 'gstappsink.c'])
+app_sources = files(['gstappsrc.c', 'gstappsink.c', 'gstapputils.c'])
 
 app_mkenum_headers = files([
   'gstappsrc.h',
@@ -57,6 +57,7 @@ if build_gir
   library_def += {'gir': [gir]}
   if not static_build
     app_gir = gnome.generate_gir(gstapp, kwargs: gir)
+    library_def += {'gir_targets':  library_def.get('gir_targets', []) + [app_gir]}
     app_gen_sources += app_gir
   endif
 endif

@@ -84,6 +84,7 @@ static gboolean
 all_inputs_are_eos (GstDecodebin3 * dbin)
 {
   GList *tmp;
+
   /* First check input streams */
   for (tmp = dbin->input_streams; tmp; tmp = tmp->next) {
     DecodebinInputStream *input = (DecodebinInputStream *) tmp->data;
@@ -91,7 +92,7 @@ all_inputs_are_eos (GstDecodebin3 * dbin)
       return FALSE;
   }
 
-  GST_DEBUG_OBJECT (dbin, "All streams are EOS");
+  GST_DEBUG_OBJECT (dbin, "All input streams are EOS");
   return TRUE;
 }
 
@@ -544,6 +545,7 @@ parsebin_pad_added_cb (GstElement * demux, GstPad * pad, DecodebinInput * input)
   SELECTION_UNLOCK (dbin);
 }
 
+/* WITH SELECTION_LOCK TAKEN! */
 static DecodebinInputStream *
 find_input_stream_for_pad (GstDecodebin3 * dbin, GstPad * pad)
 {
@@ -567,16 +569,23 @@ parsebin_pad_removed_cb (GstElement * demux, GstPad * pad, DecodebinInput * inp)
   if (!GST_PAD_IS_SRC (pad))
     return;
 
+  SELECTION_LOCK (dbin);
+
   GST_DEBUG_OBJECT (pad, "removed");
   input = find_input_stream_for_pad (dbin, pad);
-  g_assert (input);
+
+  if (input == NULL) {
+    GST_DEBUG_OBJECT (pad,
+        "Input stream not found, it was cleaned-up earlier after receiving EOS");
+    SELECTION_UNLOCK (dbin);
+    return;
+  }
 
   /* If there are no pending pads, this means we will definitely not need this
    * stream anymore */
 
   GST_DEBUG_OBJECT (pad, "Remove input stream %p", input);
 
-  SELECTION_LOCK (dbin);
   slot = get_slot_for_input (dbin, input);
   remove_input_stream (dbin, input);
 

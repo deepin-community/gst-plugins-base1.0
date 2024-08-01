@@ -1599,7 +1599,7 @@ setup_caps_delay:
     CHAIN_MUTEX_LOCK (chain);
     GST_LOG_OBJECT (parsebin, "Chain %p has now %d dynamic pads", chain,
         g_list_length (chain->pending_pads));
-    ppad = g_slice_new0 (GstPendingPad);
+    ppad = g_new0 (GstPendingPad, 1);
     ppad->pad = gst_object_ref (pad);
     ppad->chain = chain;
     ppad->event_probe_id =
@@ -2035,7 +2035,7 @@ connect_pad (GstParseBin * parsebin, GstElement * src, GstParsePad * parsepad,
     GST_LOG_OBJECT (parsebin, "linked on pad %s:%s", GST_DEBUG_PAD_NAME (pad));
 
     CHAIN_MUTEX_LOCK (chain);
-    pelem = g_slice_new0 (GstParseElement);
+    pelem = g_new0 (GstParseElement, 1);
     pelem->element = gst_object_ref (element);
     pelem->capsfilter = NULL;
     chain->elements = g_list_prepend (chain->elements, pelem);
@@ -2204,7 +2204,7 @@ connect_pad (GstParseBin * parsebin, GstElement * src, GstParsePad * parsepad,
         gst_element_set_state (tmp, GST_STATE_NULL);
 
         gst_object_unref (tmp);
-        g_slice_free (GstParseElement, dtmp);
+        g_free (dtmp);
 
         chain->elements = g_list_delete_link (chain->elements, chain->elements);
       } while (tmp != element);
@@ -2784,7 +2784,7 @@ gst_parse_chain_free_internal (GstParseChain * chain, gboolean hide)
       gst_object_unref (element);
       l->data = NULL;
 
-      g_slice_free (GstParseElement, pelem);
+      g_free (pelem);
     }
   }
   if (!hide) {
@@ -2843,7 +2843,7 @@ gst_parse_chain_free_internal (GstParseChain * chain, gboolean hide)
 
   if (!hide) {
     g_mutex_clear (&chain->lock);
-    g_slice_free (GstParseChain, chain);
+    g_free (chain);
   }
 }
 
@@ -2872,7 +2872,7 @@ static GstParseChain *
 gst_parse_chain_new (GstParseBin * parsebin, GstParseGroup * parent,
     GstPad * pad, GstCaps * start_caps)
 {
-  GstParseChain *chain = g_slice_new0 (GstParseChain);
+  GstParseChain *chain = g_new0 (GstParseChain, 1);
 
   GST_DEBUG_OBJECT (parsebin, "Creating new chain %p with parent group %p",
       chain, parent);
@@ -2913,7 +2913,7 @@ gst_parse_group_free_internal (GstParseGroup * group, gboolean hide)
   GST_DEBUG_OBJECT (group->parsebin, "%s group %p", (hide ? "Hid" : "Freed"),
       group);
   if (!hide)
-    g_slice_free (GstParseGroup, group);
+    g_free (group);
 }
 
 /* gst_parse_group_free:
@@ -3022,7 +3022,7 @@ gst_parse_chain_start_free_hidden_groups_thread (GstParseChain * chain)
 static GstParseGroup *
 gst_parse_group_new (GstParseBin * parsebin, GstParseChain * parent)
 {
-  GstParseGroup *group = g_slice_new0 (GstParseGroup);
+  GstParseGroup *group = g_new0 (GstParseGroup, 1);
 
   GST_DEBUG_OBJECT (parsebin, "Creating new group %p with parent chain %p",
       group, parent);
@@ -3637,6 +3637,8 @@ retry:
     GST_WARNING_OBJECT (parsebin,
         "Currently, shutting down, aborting exposing");
     DYN_UNLOCK (parsebin);
+    if (fallback_collection)
+      gst_object_unref (fallback_collection);
     return FALSE;
   }
 
@@ -3969,12 +3971,18 @@ guess_stream_type_from_caps (GstCaps * caps)
 {
   GstStructure *s;
   const gchar *name;
+  GstPbUtilsCapsDescriptionFlags desc;
 
   if (gst_caps_get_size (caps) < 1)
     return GST_STREAM_TYPE_UNKNOWN;
 
   s = gst_caps_get_structure (caps, 0);
   name = gst_structure_get_name (s);
+
+  if (gst_structure_has_field (s, "original-media-type")) {
+    /* Caps describe an encrypted payload, use original-media-type to determine stream type. */
+    name = gst_structure_get_string (s, "original-media-type");
+  }
 
   if (g_str_has_prefix (name, "video/") || g_str_has_prefix (name, "image/"))
     return GST_STREAM_TYPE_VIDEO;
@@ -3986,7 +3994,19 @@ guess_stream_type_from_caps (GstCaps * caps)
       g_str_has_prefix (name, "closedcaption/"))
     return GST_STREAM_TYPE_TEXT;
 
-  return GST_STREAM_TYPE_UNKNOWN;
+  /* Use information from pbutils. Note that we only care about elementary
+   * streams which is why we check flag equality */
+  desc = gst_pb_utils_get_caps_description_flags (caps);
+  switch (desc) {
+    case GST_PBUTILS_CAPS_DESCRIPTION_FLAG_AUDIO:
+      return GST_STREAM_TYPE_AUDIO;
+    case GST_PBUTILS_CAPS_DESCRIPTION_FLAG_VIDEO:
+      return GST_STREAM_TYPE_VIDEO;
+    case GST_PBUTILS_CAPS_DESCRIPTION_FLAG_SUBTITLE:
+      return GST_STREAM_TYPE_TEXT;
+    default:
+      return GST_STREAM_TYPE_UNKNOWN;
+  }
 }
 
 static void
@@ -4307,7 +4327,7 @@ gst_pending_pad_free (GstPendingPad * ppad)
   if (ppad->notify_caps_id)
     g_signal_handler_disconnect (ppad->pad, ppad->notify_caps_id);
   gst_object_unref (ppad->pad);
-  g_slice_free (GstPendingPad, ppad);
+  g_free (ppad);
 }
 
 /*****

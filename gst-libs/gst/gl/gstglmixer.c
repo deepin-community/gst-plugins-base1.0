@@ -30,6 +30,20 @@
 
 #include "gstglmixer.h"
 
+#include <gst/gl/gl.h>
+#include <gst/gl/gstglfuncs.h>
+
+/**
+ * SECTION:gstglmixer
+ * @short_description: #GstVideoAggregator subclass for transforming RGBA textures
+ * @title: GstGLMixer
+ * @see_also: #GstGLBaseMixer, #GstVideoAggregator
+ *
+ * #GstGLMixer helps implement an element that operates on RGBA textures.
+ *
+ * Since: 1.24
+ */
+
 #define GST_CAT_DEFAULT gst_gl_mixer_debug
 GST_DEBUG_CATEGORY (gst_gl_mixer_debug);
 
@@ -55,6 +69,8 @@ struct _GstGLMixerPrivate
   gboolean gl_resource_ready;
   GMutex gl_resource_lock;
   GCond gl_resource_cond;
+
+  GstGLFramebuffer *fbo;
 };
 
 #define gst_gl_mixer_parent_class parent_class
@@ -106,20 +122,15 @@ gst_gl_mixer_pad_prepare_frame (GstVideoAggregatorPad * vpad,
 {
   GstGLMixerPad *pad = GST_GL_MIXER_PAD (vpad);
   GstGLMixer *mix = GST_GL_MIXER (vagg);
-  GstVideoInfo gl_info;
   GstGLSyncMeta *sync_meta;
 
   pad->current_texture = 0;
-
-  gst_video_info_set_format (&gl_info,
-      GST_VIDEO_FORMAT_RGBA,
-      GST_VIDEO_INFO_WIDTH (&vpad->info), GST_VIDEO_INFO_HEIGHT (&vpad->info));
 
   sync_meta = gst_buffer_get_gl_sync_meta (buffer);
   if (sync_meta)
     gst_gl_sync_meta_wait (sync_meta, GST_GL_BASE_MIXER (mix)->context);
 
-  if (!gst_video_frame_map (prepared_frame, &gl_info, buffer,
+  if (!gst_video_frame_map (prepared_frame, &vpad->info, buffer,
           GST_MAP_READ | GST_MAP_GL)) {
     GST_ERROR_OBJECT (pad, "Failed to map input frame");
     return FALSE;
@@ -397,11 +408,31 @@ static void gst_gl_mixer_gl_stop (GstGLBaseMixer * mix);
 
 static void gst_gl_mixer_finalize (GObject * object);
 
+/**
+ * gst_gl_mixer_class_add_rgba_pad_templates:
+ * @klass: the #GstGLMixerClass
+ *
+ * Adds the default RGBA pad templates to this class.  If you have any special
+ * template requirements like a different pad subclass or different supported
+ * caps, you should not call this function and add the pad templates yourself
+ * manually.
+ *
+ * Since: 1.24
+ */
+void
+gst_gl_mixer_class_add_rgba_pad_templates (GstGLMixerClass * klass)
+{
+  GstElementClass *element_class = GST_ELEMENT_CLASS (klass);
+  gst_element_class_add_static_pad_template_with_gtype (element_class,
+      &src_factory, GST_TYPE_AGGREGATOR_PAD);
+  gst_element_class_add_static_pad_template_with_gtype (element_class,
+      &sink_factory, GST_TYPE_GL_MIXER_PAD);
+}
+
 static void
 gst_gl_mixer_class_init (GstGLMixerClass * klass)
 {
   GObjectClass *gobject_class = (GObjectClass *) klass;
-  GstElementClass *element_class = GST_ELEMENT_CLASS (klass);
   GstVideoAggregatorClass *videoaggregator_class =
       (GstVideoAggregatorClass *) klass;
   GstAggregatorClass *agg_class = (GstAggregatorClass *) klass;
@@ -413,11 +444,6 @@ gst_gl_mixer_class_init (GstGLMixerClass * klass)
 
   gobject_class->get_property = gst_gl_mixer_get_property;
   gobject_class->set_property = gst_gl_mixer_set_property;
-
-  gst_element_class_add_static_pad_template_with_gtype (element_class,
-      &src_factory, GST_TYPE_AGGREGATOR_PAD);
-  gst_element_class_add_static_pad_template_with_gtype (element_class,
-      &sink_factory, GST_TYPE_GL_MIXER_PAD);
 
   agg_class->sink_query = gst_gl_mixer_sink_query;
   agg_class->src_query = gst_gl_mixer_src_query;
@@ -435,11 +461,6 @@ gst_gl_mixer_class_init (GstGLMixerClass * klass)
 
   /* Register the pad class */
   g_type_class_ref (GST_TYPE_GL_MIXER_PAD);
-
-  klass->set_caps = NULL;
-
-  gst_type_mark_as_plugin_api (GST_TYPE_GL_MIXER_PAD, 0);
-  gst_type_mark_as_plugin_api (GST_TYPE_GL_MIXER, 0);
 }
 
 static void
@@ -531,9 +552,15 @@ _mixer_create_fbo (GstGLContext * context, GstGLMixer * mix)
   guint out_width = GST_VIDEO_INFO_WIDTH (&vagg->info);
   guint out_height = GST_VIDEO_INFO_HEIGHT (&vagg->info);
 
-  mix->fbo =
-      gst_gl_framebuffer_new_with_default_depth (context, out_width,
-      out_height);
+  g_mutex_lock (&mix->priv->gl_resource_lock);
+  if (!mix->priv->fbo)
+    mix->priv->fbo =
+        gst_gl_framebuffer_new_with_default_depth (context, out_width,
+        out_height);
+  g_cond_signal (&mix->priv->gl_resource_cond);
+  if (mix->priv->fbo)
+    mix->priv->gl_resource_ready = TRUE;
+  g_mutex_unlock (&mix->priv->gl_resource_lock);
 }
 
 static gboolean
@@ -546,13 +573,9 @@ static void
 gst_gl_mixer_gl_stop (GstGLBaseMixer * base_mix)
 {
   GstGLMixer *mix = GST_GL_MIXER (base_mix);
-  GstGLMixerClass *mixer_class = GST_GL_MIXER_GET_CLASS (mix);
-
-  if (mixer_class->reset)
-    mixer_class->reset (mix);
 
   g_mutex_lock (&mix->priv->gl_resource_lock);
-  gst_clear_object (&mix->fbo);
+  gst_clear_object (&mix->priv->fbo);
   g_mutex_unlock (&mix->priv->gl_resource_lock);
 
   GST_GL_BASE_MIXER_CLASS (parent_class)->gl_stop (base_mix);
@@ -563,7 +586,6 @@ gst_gl_mixer_decide_allocation (GstAggregator * agg, GstQuery * query)
 {
   GstGLBaseMixer *base_mix = GST_GL_BASE_MIXER (agg);
   GstGLMixer *mix = GST_GL_MIXER (base_mix);
-  GstGLMixerClass *mixer_class = GST_GL_MIXER_GET_CLASS (mix);
   GstGLContext *context;
   GstBufferPool *pool = NULL;
   GstStructure *config;
@@ -583,19 +605,18 @@ gst_gl_mixer_decide_allocation (GstAggregator * agg, GstQuery * query)
 
   g_mutex_lock (&mix->priv->gl_resource_lock);
   mix->priv->gl_resource_ready = FALSE;
-  if (mix->fbo)
-    gst_object_unref (mix->fbo);
+  gst_clear_object (&mix->priv->fbo);
+  g_mutex_unlock (&mix->priv->gl_resource_lock);
 
   gst_gl_context_thread_add (context,
       (GstGLContextThreadFunc) _mixer_create_fbo, mix);
-  if (!mix->fbo) {
-    g_cond_signal (&mix->priv->gl_resource_cond);
+
+  g_mutex_lock (&mix->priv->gl_resource_lock);
+  if (!mix->priv->fbo) {
+    mix->priv->gl_resource_ready = FALSE;
     g_mutex_unlock (&mix->priv->gl_resource_lock);
     goto context_error;
   }
-
-  if (mixer_class->set_caps)
-    mixer_class->set_caps (mix, mix->out_caps);
 
   mix->priv->gl_resource_ready = TRUE;
   g_cond_signal (&mix->priv->gl_resource_cond);
@@ -644,6 +665,19 @@ context_error:
   }
 }
 
+/**
+ * gst_gl_mixer_process_textures:
+ * @mix: the #GstGLMixer
+ * @outbuf: output @GstBuffer
+ *
+ * Perform processing required and call #GstGLMixerClass::process_textures().
+ * Intended for use within implementations of
+ * #GstGLMixerClass::process_buffers().
+ *
+ * Returns: whether processing of textures succeeded
+ *
+ * Since: 1.24
+ */
 gboolean
 gst_gl_mixer_process_textures (GstGLMixer * mix, GstBuffer * outbuf)
 {
@@ -674,9 +708,9 @@ gst_gl_mixer_process_textures (GstGLMixer * mix, GstBuffer * outbuf)
     goto out;
   }
 
-  mix_class->process_textures (mix, out_tex);
-
   g_mutex_unlock (&mix->priv->gl_resource_lock);
+
+  mix_class->process_textures (mix, out_tex);
 
 out:
   gst_video_frame_unmap (&out_frame);
@@ -757,4 +791,23 @@ gst_gl_mixer_stop (GstAggregator * agg)
   gst_gl_mixer_reset (mix);
 
   return GST_AGGREGATOR_CLASS (parent_class)->stop (agg);
+}
+
+/**
+ * gst_gl_mixer_get_framebuffer:
+ * @mix: the #GstGLMixer
+ *
+ * Returns: (transfer full): (nullable): The #GstGLFramebuffer in use by this @mix
+ *
+ * Since: 1.24
+ */
+GstGLFramebuffer *
+gst_gl_mixer_get_framebuffer (GstGLMixer * mix)
+{
+  GstGLFramebuffer *fbo = NULL;
+  g_mutex_lock (&mix->priv->gl_resource_lock);
+  if (mix->priv->fbo)
+    fbo = gst_object_ref (mix->priv->fbo);
+  g_mutex_unlock (&mix->priv->gl_resource_lock);
+  return fbo;
 }
