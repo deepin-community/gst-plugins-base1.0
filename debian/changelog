@@ -61,6 +61,14 @@ gst-plugins-base1.0 (1.22.7-1) unstable; urgency=medium
 
  -- Marc Leeman <marc.leeman@gmail.com>  Tue, 14 Nov 2023 14:05:15 +0100
 
+gst-plugins-base1.0 (1.22.6-1deepin1) unstable; urgency=medium
+
+  * SECURITY UPDATE: New upstream release
+    - Integer overflow in EXIF metadata parser leading to potential heap overwrite
+      (GStreamer-SA-2024-0002, ZDI-CAN-23896, CVE-2024-4453)
+
+ -- Tianyu Chen <sweetyfish@deepin.org>  Mon, 03 Jun 2024 11:25:40 +0800
+
 gst-plugins-base1.0 (1.22.6-1) unstable; urgency=medium
 
   * Team upload
