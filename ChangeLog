@@ -1,3 +1,579 @@
+=== release 1.24.6 ===
+
+2024-07-29 16:41:37 +0100  Tim-Philipp Müller <tim@centricular.com>
+
+	* NEWS:
+	* RELEASE:
+	* gst-plugins-base.doap:
+	* meson.build:
+	  Release 1.24.6
+
+2024-07-29 10:03:58 +0100  Philippe Normand <philn@igalia.com>
+
+	* gst/playback/gstparsebin.c:
+	  parsebin: accept-caps handling for elements with unusual pad names
+	  In case the last element of the parse chain doesn´t have a sink pad named
+	  "sink", send the accept-caps query to the first sink pad of the element.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7257>
+
+2024-07-25 10:34:45 +0800  Shengqi Yu <shengqi.yu@mediatek.com>
+
+	* docs/plugins/gst_plugins_cache.json:
+	* gst/videoconvertscale/gstvideoscale.c:
+	  videoscale: correct classification error
+	  videoscale does not have convert function, so remove the convert
+	  description in it's classification. Otherwise, if we want use
+	  autovideoconvert to convert colorsapce, autovideoconvert will select
+	  videoscale to do convert and this will cause to fail.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7235>
+
+2024-07-19 21:34:31 +0530  Nirbheek Chauhan <nirbheek@centricular.com>
+
+	* ext/gl/gstglmixerbin.c:
+	  glvideomixer: Fix critical when setting start-time-selection
+	  It caused a critical, but did not affect functionality because the
+	  GValue was passed as-is to the glvideomixerelement which actually does
+	  something with the property.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7207>
+
+2024-05-28 18:26:56 +0200  Jakub Adam <jakub.adam@collabora.com>
+
+	* gst-libs/gst/video/gstvideoaggregator.c:
+	  gstvideoaggregator: preserve features in non-alpha caps
+	  Fixes caps negotiation when sink template caps of an element inheriting
+	  GstVideoAggregator have features different from the implicit
+	  "memory:SystemMemory".
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7198>
+
+2024-05-01 18:05:35 +0300  Sebastian Dröge <sebastian@centricular.com>
+
+	* gst/typefind/gsttypefindfunctions.c:
+	* gst/typefind/gsttypefindfunctionsplugin.c:
+	* gst/typefind/gsttypefindfunctionsplugin.h:
+	* gst/typefind/gsttypefindfunctionsriff.c:
+	* gst/typefind/gsttypefindfunctionsstartwith.c:
+	  typefind: Add typefinders for formats that were previously available via ffmpeg
+	  Co-Authored-By: Matthew Waters <matthew@centricular.com>
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7148>
+
+2024-07-03 18:26:00 +0530  Nirbheek Chauhan <nirbheek@centricular.com>
+
+	* gst-libs/gst/gl/meson.build:
+	  meson: Fix invalid include flag in uninstalled gl pc file
+	  ${libdir}/gstreamer-1.0/include is only valid after installation, but
+	  extra_cflags are added unconditionally, so we can't use that for
+	  include flags.
+	  Instead, let's add the include flag via variables, which are different
+	  for installed and uninstalled pc files.
+	  This is particularly bad for consuming GStreamer via CMake which barfs
+	  on non-existent include paths.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7143>
+
+2024-07-02 15:50:28 +0100  Tim-Philipp Müller <tim@centricular.com>
+
+	* gst/subparse/gstsubparseelement.c:
+	  subparse: remove regex optimized flag explicitly
+	  That way the other flags in jit_flags are not touched and
+	  flags changes in future only need to be done in one place.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7129>
+
+2024-07-02 15:49:03 +0100  Tim-Philipp Müller <tim@centricular.com>
+
+	* meson.build:
+	* tests/check/meson.build:
+	  gst-plugins-base: put valgrind header availability define into config.h for subparse
+	  Make the valgrind header avaibility accessible to any code in
+	  gst-plugins-base, currently it was only signalled to unit tests.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7129>
+
+2024-07-02 09:44:25 +0200  Edward Hervey <edward@centricular.com>
+
+	* gst/subparse/gstsubparseelement.c:
+	  subparse: Don't use jitted regex when used with valgrind
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7124>
+
+2024-06-29 11:06:07 +0200  Edward Hervey <edward@centricular.com>
+
+	* gst-libs/gst/pbutils/encoding-target.c:
+	  encoding-target: Chain up to parent class
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7123>
+
+2024-06-28 17:09:58 +0200  Edward Hervey <edward@centricular.com>
+
+	* gst-libs/gst/pbutils/encoding-profile.c:
+	  encoding-profile: Chain up to parent class finalize
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7123>
+
+2024-06-20 11:37:33 +0200  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Fix keyframe drop probe handling
+	  We were storing the probe id in a different structure (DecodebinOutputStream)
+	  than the pad it is targetting (which is in MultiQueueSlot).
+	  The problem is that when re-targetting outputs (to a different slot)... we would
+	  end up having an invalid probe id, or not have a reference to an existing one.
+	  Instead, store the probe id in the same structure as the pad it's targetting
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7074>
+
+2024-06-20 11:35:08 +0200  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Fix detection of selection done
+	  We should not assert if there are still some old streams that are waiting to be
+	  deactivated.
+	  Instead wait for them to be gone before posting the selection done message
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7074>
+
+2024-06-20 13:02:19 +0100  Tim-Philipp Müller <tim@centricular.com>
+
+	* meson.build:
+	  Back to development after 1.24.5
+
+=== release 1.24.5 ===
+
+2024-06-20 12:54:15 +0100  Tim-Philipp Müller <tim@centricular.com>
+
+	* NEWS:
+	* RELEASE:
+	* gst-plugins-base.doap:
+	* meson.build:
+	  Release 1.24.5
+
+2024-06-18 16:27:39 +0300  Sebastian Dröge <sebastian@centricular.com>
+
+	* gst-libs/gst/video/video-info.c:
+	  video-info: Don't crash in gst_video_info_is_equal() if one videoinfo is zero-initialized
+	  Instead handle it like gst_audio_info_is_equal() and consider both different.
+	  And also add a shortcut for the pointers to both infos being equal.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7059>
+
+2024-06-11 16:42:34 +0200  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gsturidecodebin3.c:
+	  uridecodebin3: Don't hold PLAY_ITEMS lock when activating them
+	  Once the item is configured it can be activated without holding that lock
+	  Fixes #3610
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7020>
+
+2024-06-10 14:56:00 +0200  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Always ensure we end up with parsebin or identity
+	  This fixes a regression introduced by 6c4f52ea20ce27730501348c6e575b8d35580239
+	  There are cases where the input stream will be push-based, time-segment and not
+	  have a collection nor caps. This means the event-based checks are not sufficient
+	  to decide when/where to plug in a identity or parsebin to process the input.
+	  For those corner cases we setup a buffer probe to ensure we always end up with
+	  at least a parsebin
+	  Fixes #3609
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7018>
+
+2024-05-29 10:31:19 +0200  Edward Hervey <bilboed@bilboed.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Avoid usage of parsebin even more
+	  When dealing with push-based inputs, we are now delaying the creation of
+	  parsebin/identity until we get all pre-buffer events.
+	  We therefore can simplify the handling of new pads being linked and only have to
+	  check if upstream can handle pull-based or not.
+	  Avoids creating parsebin for parsed upstream data altogether
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6995>
+
+2024-04-29 11:26:48 +0200  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Ensure we get a collection for parsed inputs
+	  When we are dealing with parsed inputs (i.e. using identity), we need to ensure
+	  that we have a valid stream collection (and therefore DBCollection) before
+	  anything flows dowsntream.
+	  In those cases, we hold onto those events until we get such a collection.
+	  Fixes #3356
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-04-08 09:56:21 +0200  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: New mechanism for handling collection and selections
+	  This commit separates collection and selections into a new separate structure:
+	  DecodebinCollection.
+	  This provides a much cleaner/saner way of dealing with collections being
+	  updated, gapless playback, etc...
+	  There is now a list of DecodebinCollection in flight, of which two are special:
+	  * input_collection, the currently inputted/merged collection
+	  * output_collection, the currently active collection on the output of multiqueue
+	  Handling GST_EVENT_SELECT_STREAMS is split, by looking for the collection to
+	  which it applies. And the requested streams are stored in it. IIF that
+	  collection is output_collection we can do the switch, else it will be updated
+	  when it becomes active.
+	  Detecting which collection/selection is active is done by looking at the
+	  GST_EVENT_STREAM_START on the output of the multiqueue.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-04-08 09:34:22 +0200  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: minor refactoring to identify selected stream
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-04-08 09:28:46 +0200  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Debug line cleanups
+	  Use identifiable items in log lines instead of random pointers
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-26 08:34:42 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin: Remove unused includes
+	  * config.h is not used, plugin/element is registered in another file
+	  * play-enum.h is not used
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-25 15:09:14 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Remove un-needed variable
+	  We don't do anything with the unknown streams. Detecting that a list of
+	  requested streams don't apply to a given collection should be handled
+	  before-hand
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-25 12:05:36 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Remove un-needed variable
+	  pending_select_streams was only set just before releasing/taking the selection
+	  lock in a single place. That temporary lock release is not needed and therefore
+	  the variable isn't needed either
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-25 09:33:11 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Remove active_selection list
+	  It's a duplicate of the list of slots which have an output. Use that instead.
+	  Also when we fail to (re)configure an output, remove it.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-25 08:50:21 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Cache slot stream_id and rename more variables
+	  * Move the handling of GST_EVENT_STREAM_START on a slot to a separate function
+	  * There was a lot of usage of `gst_stream_get_stream_id()` for the slot
+	  active_stream. Cache that instead of constantly querying it.
+	  * Rename the variables in `handle_stream_switch()` to be clearer
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-24 12:51:43 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Refactor slot/output (re)configuration
+	  * Re-use existing function where possible
+	  * Only set/reset keyframe probe at unique places
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-24 12:05:29 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Refactor linking input to slot
+	  The same sequence of calls was done when doing that
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-24 11:50:17 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: input_unblock_streams: Clarify variable
+	  It's a list of pads, not slots
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-22 12:01:06 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Rename multiqueue related functions
+	  To make clear on what they apply
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-22 11:55:40 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Refactor/rename slot/output
+	  * Centralize associating an output to a slot in one function, including properly
+	  resetting those fields
+	  * Rename functions to be more explicit
+	  * Move code to "reset" an output stream into a dedicated function (will be used
+	  later)
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-21 12:17:25 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Refactor removal of slot/output from streaming thread
+	  The code was identical in several places
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-21 11:04:55 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: rename/clarify eos and draining usage around multiqueue
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-21 08:52:41 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Document/refactor DecodebinInput handling
+	  * Rename the function names to be clearer, with prefixes
+	  * Pass the input (or stream) directly where appropriate
+	  * Document usage, inputs, ownership
+	  * Rename variables for clarity where applicable
+	  * Avoid double lock/unlock if callee can handle it directly
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-20 09:07:39 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3-parse.c:
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Move gstdecodebin3-parse.c into gstdecodebin3.c
+	  Makes it easier to work with LSP
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-19 11:27:23 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Refactor incoming collection handling
+	  Simplify its usage by having it directly create the message if the collection
+	  changed. This is what caller were always doing and avoids releasing selection
+	  locks yet-another-time
+	  Also use it in more places to avoid code repetition
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-14 10:39:31 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Rename variable for clarity
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-14 10:06:54 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Refactor GST_EVENT_SELECT_STREAMS handling
+	  * The same code is used for the event, regardless of whether it's coming from
+	  via a pad or directly on the element
+	  * The pending_select_streams list content was never used, switch it to a boolean
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-03-14 09:53:06 +0100  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Don't forward select streams if we are handling it
+	  Since the introduction of the "SELECTABLE" query, the usage of selection was
+	  clarified. We don't need to forward the GST_EVENT_SELECT_STREAMS at this point.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/7002>
+
+2024-05-24 17:32:21 +0200  Jakub Adam <jakub.adam@collabora.com>
+
+	* gst-libs/gst/gl/gstglcolorconvert.c:
+	  glcolorconvert: update existing sync meta if outbuf has one
+	  Instead of always adding a new one, which means the buffer could end up
+	  with multiple sync meta instances.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6962>
+
+2024-05-29 13:51:27 +0300  Tim-Philipp Müller <tim@centricular.com>
+
+	* meson.build:
+	  Back to development after 1.24.4
+
+=== release 1.24.4 ===
+
+2024-05-29 13:44:50 +0300  Tim-Philipp Müller <tim@centricular.com>
+
+	* NEWS:
+	* RELEASE:
+	* gst-plugins-base.doap:
+	* meson.build:
+	  Release 1.24.4
+
+2024-05-28 16:04:37 +0300  Sebastian Dröge <sebastian@centricular.com>
+
+	* gst/typefind/gsttypefindfunctions.c:
+	  typefind: Fix handling of ID_ODD_SIZE in WavPack typefinder
+	  Chunks are always starting on an even position and this flag only
+	  specifies that the last byte of the chunk is not valid.
+	  Fixes https://gitlab.freedesktop.org/gstreamer/gstreamer/-/issues/3569
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6944>
+
+2024-04-29 12:15:20 +0200  Yacine Bandou <yacine.bandou@softathome.com>
+
+	* gst/playback/gststreamsynchronizer.c:
+	  streamsynchronizer: Fix deadlock when streams have been flushed before others start
+	  To simplify the description, I'm assuming we only have two streams: video and audio.
+	  For the video stream, we have the following events :
+	  - STREAM_START => stream->wait set to true
+	  - NEW_SEGMENT(1) => blocked waiting in gst_stream_synchronizer_wait
+	  - FLUSH_START => unblocked
+	  - FLUSH_STOP => stream->wait reset to false
+	  - NEW_SEGMENT(2) => not waiting, since stream->wait is false
+	  Then for the audio stream, we have the following events :
+	  - STREAM_START => stream->wait set to true
+	  - NEW_SEGMENT(2) => blocked waiting in gst_stream_synchronizer_wait for ever.
+	  Note: The first NEW_SEGMENT event and the FLUSH_START, FLUSH_STOP events of the audio stream
+	  are dropped before being received by the streamsynchronizer element, because the decodebin audio pad src
+	  is not yet linked to the playsink audio pad sink.
+	  To fix this deadlock, we don't reset stream->wait to false in the FLUSH_STOP event when it is not
+	  waiting for the EOS of the other streams.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6887>
+
+2024-05-15 10:58:57 -0700  Joshua Breeden <joshua.breeden@kiswe.com>
+
+	* gst/videotestsrc/gstvideotestsrc.c:
+	* gst/videotestsrc/gstvideotestsrc.h:
+	  videotestsrc: add mutex around cache buffer to prevent race condition
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6889>
+
+2024-05-15 22:17:44 +0900  Seungha Yang <seungha@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	* gst/playback/gsturidecodebin3.c:
+	* gst/playback/gsturisourcebin.c:
+	  decodebin3: Fix caps and stream leaks
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6866>
+
+2024-05-09 12:41:45 +0300  Sebastian Dröge <sebastian@centricular.com>
+
+	* tests/check/elements/audioconvert.c:
+	  audioconvert: Add test for 96 channel conversion
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6828>
+
+2024-05-09 09:57:54 +0300  Sebastian Dröge <sebastian@centricular.com>
+
+	* gst-libs/gst/audio/audio-channel-mixer.c:
+	* gst-libs/gst/audio/audio-channels.c:
+	  audioconvert: Support converting >64 channels
+	  There's nothing requiring <= 64 channels except for getting the reorder
+	  map and creating a channel mixing matrix, but those won't be possible to
+	  call anyway as channel positions can only express up to 64 channels.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6828>
+
+2024-05-03 22:35:21 -0400  Bill Nottingham <notting@splat.cc>
+
+	* gst-libs/gst/pbutils/gstaudiovisualizer.c:
+	  pbutils: fix visualization plugins
+	  inbuf is persistent, GST_BUFFER_COPY_MEMORY's append behavior is
+	  not what we want.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6814>
+
+2024-04-29 15:25:28 +0800  Shengqi Yu <shengqi.yu@mediatek.com>
+
+	* ext/gl/gstgldownloadelement.c:
+	* gst-libs/gst/gl/gstglmixer.c:
+	  glmixer: Add GL_SYNC_META option to bufferpool
+	  when pipline is
+	  glvideomixerelement->glcolorconvertelement->gldownloadelement and
+	  glcolorconvertelement is not passthrough, the gl bufferpool between
+	  glvideomixerelement and glcolorconvertelement will not add gl sync meta
+	  during allocating buffer. This will cause that glcolorconvert's inbuf
+	  has no sync meta to wait for.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6784>
+
+2024-04-30 00:36:59 +0100  Tim-Philipp Müller <tim@centricular.com>
+
+	* meson.build:
+	  Back to development after 1.24.3
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6772>
+
+=== release 1.24.3 ===
+
+2024-04-30 00:15:23 +0100  Tim-Philipp Müller <tim@centricular.com>
+
+	* NEWS:
+	* RELEASE:
+	* gst-plugins-base.doap:
+	* meson.build:
+	  Release 1.24.3
+
+2024-04-25 15:21:20 +0300  Sebastian Dröge <sebastian@centricular.com>
+
+	* gst-libs/gst/tag/gstexiftag.c:
+	  exiftag: Prevent integer overflows and out of bounds reads when handling undefined tags
+	  Fixes ZDI-CAN-23896
+	  Fixes https://gitlab.freedesktop.org/gstreamer/gstreamer/-/issues/3483
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6768>
+
+2024-04-26 10:12:23 +0200  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstplaybin3.c:
+	  playbin3: Handle combiner update in case of errors
+	  The assertion that was present before is a bit too harsh, since there is now
+	  a (understandable) use-case where this could happen.
+	  In gapless use-case, with two files containing the same type (ex:audio). The
+	  first one *does* expose a collection with an audio stream, but decoding
+	  fails (for whatever reason).
+	  That would cause us to have configured a audio combiner, which was never
+	  used (i.e. not active).
+	  Then the second file plays and we (wrongly) assume it should be activated
+	  ... whereas the combiner was indeed present.
+	  Demote the assertion to a warning and properly handle it
+	  Fixes https://gitlab.freedesktop.org/gstreamer/gstreamer/-/issues/3389
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6742>
+
+2024-04-22 16:05:29 +0200  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstdecodebin3.c:
+	  decodebin3: Remove custom stream-start field if present
+	  This field is added by urisourcebin so that we can avoid double-parsing. It's no
+	  longer needed after.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6716>
+
+2024-04-19 11:31:54 +0200  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gsturisourcebin.c:
+	  urisourcebin2: Adaptive demuxers don't require another parsebin
+	  By setting the same field on the GST_EVENT_STREAM_START decodebin3 will be able
+	  to avoid plugging in an extra parsebin
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6716>
+
+2024-04-14 11:55:56 -0400  F. Duncanh <fduncanh@gmail.com>
+
+	* sys/ximage/ximagesink.c:
+	  ximagesink: initialize mask for XISelectEvents
+	  Fixes #3470
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6654>
+
+2024-04-10 14:58:54 +1000  Matthew Waters <matthew@centricular.com>
+
+	* gst-libs/gst/gl/gstglcolorconvert.c:
+	  glcolorconvert: don't overread the end of an array
+	  Reverse index iteration needs a - 1 for the initial value.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6605>
+
+2024-04-03 20:35:06 +1100  Matthew Waters <matthew@centricular.com>
+
+	* gst-libs/gst/gl/gstglcolorconvert.c:
+	  glcolorconvert: remove unused swizzling using "rgba" chars
+	  We use indices now instead.
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6605>
+
+2024-04-10 07:22:36 +0200  Edward Hervey <edward@centricular.com>
+
+	* gst/playback/gstparsebin.c:
+	  parsebin: Ensure non-time subtitle streams get "parsed"
+	  Since https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6153 ,
+	  subtitle "decoders" (i.e. which decode to raw text) are no longer auto-plugged
+	  by parsebin.
+	  But if a given format does not have a parser at all, we would end up outputting
+	  non-time/non-parsed outputs.
+	  In order to mitigate the issue, until such parsers are available, we check if
+	  the subtitle stream is in TIME format or not (i.e. whether it comes from a
+	  parser or demuxer). If not, we attempt to plug in a subtitle "decoder".
+	  Fixes #3463
+	  Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/6597>
+
+2024-04-10 00:04:02 +0100  Tim-Philipp Müller <tim@centricular.com>
+
+	* meson.build:
+	  Back to development after 1.24.2
+
 === release 1.24.2 ===
 
 2024-04-09 21:48:55 +0100  Tim-Philipp Müller <tim@centricular.com>
