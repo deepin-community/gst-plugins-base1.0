@@ -1,5 +1,5 @@
 project('gst-plugins-base', 'c',
-  version : '1.24.2',
+  version : '1.24.6',
   meson_version : '>= 1.1',
   default_options : [ 'warning_level=1',
                       'buildtype=debugoptimized' ])
@@ -302,6 +302,9 @@ gst_plugins_base_args = ['-DHAVE_CONFIG_H']
 if get_option('default_library') == 'static'
   gst_plugins_base_args += ['-DGST_STATIC_COMPILATION']
 endif
+
+valgrind_dep = dependency('valgrind', required: false)
+core_conf.set('HAVE_VALGRIND', valgrind_dep.found())
 
 libdrm_dep = dependency('libdrm', version : '>= 2.4.98',
   required : get_option('drm'),

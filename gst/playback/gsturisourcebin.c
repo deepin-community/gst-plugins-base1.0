@@ -844,6 +844,7 @@ new_demuxer_pad_added_cb (GstElement * element, GstPad * pad,
 
     if (stream) {
       slot = find_replacement_slot (info, stream);
+      gst_object_unref (stream);
       if (slot) {
         GST_DEBUG_OBJECT (pad, "Can re-use slot %s:%s",
             GST_DEBUG_PAD_NAME (slot->originating_pad));
@@ -951,7 +952,8 @@ demux_pad_events (GstPad * pad, GstPadProbeInfo * info, OutputSlotInfo * slot)
     {
       /* This is a temporary hack to notify downstream decodebin3 to *not*
        * plug in an extra parsebin */
-      if (slot->linked_info && slot->linked_info->demuxer_is_parsebin) {
+      if (urisrc->is_adaptive || (slot->linked_info
+              && slot->linked_info->demuxer_is_parsebin)) {
         GstStructure *s;
         GST_PAD_PROBE_INFO_DATA (info) = ev = gst_event_make_writable (ev);
         s = (GstStructure *) gst_event_get_structure (ev);
