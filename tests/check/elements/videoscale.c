@@ -33,17 +33,6 @@
 
 #ifndef VSCALE_TEST_GROUP
 
-static guint
-get_num_formats (void)
-{
-  guint i = 2;
-
-  while (gst_video_format_to_string ((GstVideoFormat) i) != NULL)
-    ++i;
-
-  return i;
-}
-
 static void
 check_pad_template (GstPadTemplate * tmpl)
 {
@@ -51,10 +40,9 @@ check_pad_template (GstPadTemplate * tmpl)
   GstStructure *s;
   gboolean *formats_supported;
   GstCaps *caps;
-  guint i, num_formats;
+  guint i;
 
-  num_formats = get_num_formats ();
-  formats_supported = g_new0 (gboolean, num_formats);
+  formats_supported = g_new0 (gboolean, GST_VIDEO_FORMAT_LAST);
 
   caps = gst_pad_template_get_caps (tmpl);
 
@@ -87,7 +75,7 @@ check_pad_template (GstPadTemplate * tmpl)
 
   gst_caps_unref (caps);
 
-  for (i = 2; i < num_formats; ++i) {
+  for (i = 2; i < GST_VIDEO_FORMAT_LAST; ++i) {
     if (!formats_supported[i]) {
       const gchar *fmt_str = gst_video_format_to_string ((GstVideoFormat) i);
 
@@ -179,7 +167,7 @@ videoscale_get_allowed_caps_for_method (int method)
   GstCaps *caps, **ret;
   GstPad *pad;
   GstStructure *s;
-  gint i, n;
+  gint i, j, n;
 
   scale = gst_element_factory_make ("videoscale", "vscale");
   g_object_set (scale, "method", method, NULL);
@@ -192,14 +180,16 @@ videoscale_get_allowed_caps_for_method (int method)
   n = gst_caps_get_size (caps);
   ret = g_new0 (GstCaps *, n + 1);
 
-  for (i = 0; i < n; i++) {
+
+  for (i = 0, j = 0; i < n; i++) {
     /* Skip passthrough caps */
     if (gst_caps_features_is_any (gst_caps_get_features (caps, i)))
       continue;
     s = gst_caps_get_structure (caps, i);
-    ret[i] = gst_caps_new_empty ();
-    gst_caps_append_structure (ret[i], gst_structure_copy (s));
+    ret[j] = gst_caps_new_empty ();
+    gst_caps_append_structure (ret[j], gst_structure_copy (s));
     GST_LOG ("method %d supports: %" GST_PTR_FORMAT, method, s);
+    j++;
   }
 
   gst_caps_unref (caps);

@@ -46,6 +46,132 @@ typedef struct
 
 static gboolean bus_msg_handler (GstBus * bus, GstMessage * msg, gpointer data);
 
+typedef enum
+{
+  SHELL_POSIX,
+  SHELL_CMD,
+  SHELL_POWERSHELL,
+} ShellType;
+
+static inline ShellType
+get_shell_type (void)
+{
+  if (g_getenv ("PROMPT") != NULL)
+    return SHELL_CMD;
+  if (g_getenv ("PSModulePath") != NULL)
+    return SHELL_POWERSHELL;
+  return SHELL_POSIX;
+}
+
+/*
+ * Some quoting rules here:
+ * https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmd
+ *
+ * The rest has been deduced from trial-and-error, since command-line parsing
+ * is different on Windows compared to UNIX. There is no char* argument array
+ * when processes are created. There is a single argument, and the CRT splits
+ * it into an array based on its own arcane rules when running a POSIX
+ * command-line app with a `main()` instead of `WinMain()`.
+ *
+ * https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-winmain
+ *
+ * So for arguments passed to gst-launch, we need to deal with both how cmd.exe
+ * handles quoting/escaping and also how the UCRT does argument splitting. The
+ * current algorithm is:
+ *
+ * - Everything is quoted with " except
+ * - % needs to be escaped with ^ otherwise it will undergo variable expansion
+ * - % must not be quoted with " otherwise the caret-escaping doesn't work
+ * - " needs to be escaped as "" when inside " quotes
+ * - \ needs to be escaped as \\ due to gst_value_deserialize()
+ *
+ * So for example `%PATH% bar" wdwd |` becomes `""^%"PATH"^%" bar"" wdwd |"`
+ */
+static inline char *
+cmd_quote (const char *s)
+{
+  GString *str = g_string_new (s);
+  g_string_replace (str, "\"", "\"\"", 0);
+  g_string_replace (str, "\\", "\\\\", 0);
+  str = g_string_prepend_c (str, '"');
+  str = g_string_append_c (str, '"');
+  /* Very simple and very ugly: simply terminate the " quoting when we
+   * encounter % then escape it and continue the " quoting  */
+  g_string_replace (str, "%", "\"^%\"", 0);
+  return g_string_free (str, FALSE);
+}
+
+/* Verbatim quoting rules:
+ * https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_quoting_rules
+ *
+ * On top of this, \ needs to be escaped as \\ due to gst_value_deserialize()
+ * when parsing launch-lines.
+ *
+ * The main vs WinMain issue exists here, but the quoting rules are simple
+ * enough to cover both.
+ */
+static inline char *
+powershell_quote (const char *s)
+{
+  GString *str = g_string_new (s);
+  g_string_replace (str, "'", "''", 0);
+  g_string_replace (str, "‘", "‘‘", 0);
+  g_string_replace (str, "’", "’’", 0);
+  g_string_replace (str, "\\", "\\\\", 0);
+  str = g_string_prepend_c (str, '\'');
+  str = g_string_append_c (str, '\'');
+  return g_string_free (str, FALSE);
+}
+
+static inline char *
+do_shell_quote (const char *s)
+{
+  switch (get_shell_type ()) {
+    case SHELL_POSIX:
+      return g_shell_quote (s);
+    case SHELL_CMD:
+      return cmd_quote (s);
+    case SHELL_POWERSHELL:
+      return powershell_quote (s);
+  }
+  g_assert_not_reached ();
+}
+
+static inline char *
+value_to_string (const GValue * v)
+{
+  const char *d;
+  char *ret, *s;
+  gboolean need_quote = FALSE;
+
+  if (G_VALUE_HOLDS_STRING (v)) {
+    const char *str = g_value_get_string (v);
+    if (!g_utf8_validate (str, -1, NULL)) {
+      s = gst_value_serialize (v);
+    } else {
+      s = g_strdup (str);
+    }
+  } else {
+    s = gst_value_serialize (v);
+  }
+
+
+  d = s;
+  while (*++d) {
+    if (!g_ascii_isalnum (*d)) {
+      need_quote = TRUE;
+      break;
+    }
+  }
+
+  if (need_quote) {
+    ret = do_shell_quote (s);
+    g_free (s);
+    return ret;
+  }
+  return s;
+}
+
 static gchar *
 get_launch_line (GstDevice * device)
 {
@@ -95,8 +221,10 @@ get_launch_line (GstDevice * device)
         continue;
 
       for (j = 0; ignored_propnames[j]; j++)
-        if (!g_strcmp0 (ignored_propnames[j], property->name))
+        if (!g_strcmp0 (ignored_propnames[j], property->name)) {
           ignore = TRUE;
+          break;
+        }
 
       if (ignore)
         continue;
@@ -110,7 +238,7 @@ get_launch_line (GstDevice * device)
       g_object_get_property (G_OBJECT (element), property->name, &value);
       g_object_get_property (G_OBJECT (pureelement), property->name, &pvalue);
       if (gst_value_compare (&value, &pvalue) != GST_VALUE_EQUAL) {
-        gchar *valuestr = gst_value_serialize (&value);
+        char *valuestr = value_to_string (&value);
 
         if (!valuestr) {
           GST_WARNING ("Could not serialize property %s:%s",
@@ -122,7 +250,6 @@ get_launch_line (GstDevice * device)
         g_string_append_printf (launch_line, " %s=%s",
             property->name, valuestr);
         g_free (valuestr);
-
       }
 
     next:
@@ -140,7 +267,7 @@ get_launch_line (GstDevice * device)
 
 
 static gboolean
-print_structure_field (GQuark field_id, const GValue * value,
+print_structure_field (const GstIdStr * fieldname, const GValue * value,
     gpointer user_data)
 {
   gchar *val;
@@ -155,10 +282,10 @@ print_structure_field (GQuark field_id, const GValue * value,
   }
 
   if (val != NULL)
-    g_print ("\n\t\t%s = %s", g_quark_to_string (field_id), val);
+    gst_print ("\n\t\t%s = %s", gst_id_str_as_str (fieldname), val);
   else
-    g_print ("\n\t\t%s - could not serialise field of type %s",
-        g_quark_to_string (field_id), G_VALUE_TYPE_NAME (value));
+    gst_print ("\n\t\t%s - could not serialise field of type %s",
+        gst_id_str_as_str (fieldname), G_VALUE_TYPE_NAME (value));
 
   g_free (val);
 
@@ -166,11 +293,11 @@ print_structure_field (GQuark field_id, const GValue * value,
 }
 
 static gboolean
-print_field (GQuark field, const GValue * value, gpointer unused)
+print_field (const GstIdStr * fieldname, const GValue * value, gpointer unused)
 {
   gchar *str = gst_value_serialize (value);
 
-  g_print (", %s=%s", g_quark_to_string (field), str);
+  gst_print (", %s=%s", gst_id_str_as_str (fieldname), str);
   g_free (str);
   return TRUE;
 }
@@ -191,44 +318,44 @@ print_device (GstDevice * device, gboolean modified)
   device_class = gst_device_get_device_class (device);
   props = gst_device_get_properties (device);
 
-  g_print ("\nDevice %s:\n\n", modified ? "modified" : "found");
-  g_print ("\tname  : %s\n", name);
-  g_print ("\tclass : %s\n", device_class);
+  gst_print ("\nDevice %s:\n\n", modified ? "modified" : "found");
+  gst_print ("\tname  : %s\n", name);
+  gst_print ("\tclass : %s\n", device_class);
   for (i = 0; i < size; ++i) {
     GstStructure *s = gst_caps_get_structure (caps, i);
     GstCapsFeatures *features = gst_caps_get_features (caps, i);
 
-    g_print ("\t%s %s", (i == 0) ? "caps  :" : "       ",
+    gst_print ("\t%s %s", (i == 0) ? "caps  :" : "       ",
         gst_structure_get_name (s));
     if (features && (gst_caps_features_is_any (features) ||
             !gst_caps_features_is_equal (features,
                 GST_CAPS_FEATURES_MEMORY_SYSTEM_MEMORY))) {
       gchar *features_string = gst_caps_features_to_string (features);
 
-      g_print ("(%s)", features_string);
+      gst_print ("(%s)", features_string);
       g_free (features_string);
     }
-    gst_structure_foreach (s, print_field, NULL);
-    g_print ("\n");
+    gst_structure_foreach_id_str (s, print_field, NULL);
+    gst_print ("\n");
   }
   if (props) {
-    g_print ("\tproperties:");
-    gst_structure_foreach (props, print_structure_field, NULL);
+    gst_print ("\tproperties:");
+    gst_structure_foreach_id_str (props, print_structure_field, NULL);
     gst_structure_free (props);
-    g_print ("\n");
+    gst_print ("\n");
   }
   str = get_launch_line (device);
   if (gst_device_has_classes (device, "Source"))
-    g_print ("\tgst-launch-1.0 %s ! ...\n", str);
+    gst_print ("\tgst-launch-1.0 %s ! ...\n", str);
   else if (gst_device_has_classes (device, "Sink"))
-    g_print ("\tgst-launch-1.0 ... ! %s\n", str);
+    gst_print ("\tgst-launch-1.0 ... ! %s\n", str);
   else if (gst_device_has_classes (device, "CameraSource")) {
-    g_print ("\tgst-launch-1.0 %s.vfsrc name=camerasrc ! ... "
+    gst_print ("\tgst-launch-1.0 %s.vfsrc name=camerasrc ! ... "
         "camerasrc.vidsrc ! [video/x-h264] ... \n", str);
   }
 
   g_free (str);
-  g_print ("\n");
+  gst_print ("\n");
 
   g_free (name);
   g_free (device_class);
@@ -244,8 +371,8 @@ device_removed (GstDevice * device)
 
   name = gst_device_get_display_name (device);
 
-  g_print ("Device removed:\n");
-  g_print ("\tname  : %s\n", name);
+  gst_print ("Device removed:\n");
+  gst_print ("\tname  : %s\n", name);
 
   g_free (name);
 }
@@ -272,7 +399,7 @@ bus_msg_handler (GstBus * bus, GstMessage * msg, gpointer user_data)
       gst_object_unref (device);
       break;
     default:
-      g_print ("%s message\n", GST_MESSAGE_TYPE_NAME (msg));
+      gst_print ("%s message\n", GST_MESSAGE_TYPE_NAME (msg));
       break;
   }
 
@@ -330,7 +457,7 @@ real_main (int argc, char **argv)
   if (!g_option_context_parse (ctx, &argc, &argv, &err))
 #endif
   {
-    g_print ("Error initializing: %s\n", GST_STR_NULL (err->message));
+    gst_print ("Error initializing: %s\n", GST_STR_NULL (err->message));
     g_option_context_free (ctx);
     g_clear_error (&err);
     return 1;
@@ -348,9 +475,9 @@ real_main (int argc, char **argv)
     gchar *version_str;
 
     version_str = gst_version_string ();
-    g_print ("%s version %s\n", g_get_prgname (), PACKAGE_VERSION);
-    g_print ("%s\n", version_str);
-    g_print ("%s\n", GST_PACKAGE_ORIGIN);
+    gst_print ("%s version %s\n", g_get_prgname (), PACKAGE_VERSION);
+    gst_print ("%s\n", version_str);
+    gst_print ("%s\n", GST_PACKAGE_ORIGIN);
     g_free (version_str);
 
     return 0;
@@ -367,7 +494,7 @@ real_main (int argc, char **argv)
   /* process optional remaining arguments in the form
    * DEVICE_CLASSES or DEVICE_CLASSES:FILTER_CAPS */
   for (arg = args; arg != NULL && *arg != NULL; ++arg) {
-    gchar **filters = g_strsplit (*arg, ":", -1);
+    gchar **filters = g_strsplit (*arg, ":", 2);
     if (filters != NULL && filters[0] != NULL) {
       GstCaps *caps = NULL;
 
@@ -384,12 +511,12 @@ real_main (int argc, char **argv)
   }
   g_strfreev (args);
 
-  g_print ("Probing devices...\n\n");
+  gst_print ("Probing devices...\n\n");
 
   timer = g_timer_new ();
 
   if (!gst_device_monitor_start (app.monitor)) {
-    g_printerr ("Failed to start device monitor!\n");
+    gst_printerr ("Failed to start device monitor!\n");
     return -1;
   }
 
@@ -399,7 +526,7 @@ real_main (int argc, char **argv)
     /* Consume all the messages pending on the bus and exit */
     g_idle_add ((GSourceFunc) quit_loop, app.loop);
   } else {
-    g_print ("Monitoring devices, waiting for devices to be removed or "
+    gst_print ("Monitoring devices, waiting for devices to be removed or "
         "new devices to be added...\n");
   }
 

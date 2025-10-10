@@ -365,25 +365,12 @@ video_format_is_packed (GstVideoFormat fmt)
   return FALSE;
 }
 
-static gint
-get_num_formats (void)
-{
-  gint num_formats = 200;
-  fail_unless (gst_video_format_to_string (num_formats) == NULL);
-  while (gst_video_format_to_string (num_formats) == NULL)
-    --num_formats;
-  GST_INFO ("number of known video formats: %d", num_formats);
-  return num_formats + 1;
-}
-
 GST_START_TEST (test_video_formats_all)
 {
   GstStructure *s;
   const GValue *val, *list_val;
   GstCaps *caps;
-  guint num, n, num_formats;
-
-  num_formats = get_num_formats ();
+  guint num, n;
 
   caps = gst_caps_from_string ("video/x-raw, format=" GST_VIDEO_FORMATS_ALL);
   s = gst_caps_get_structure (caps, 0);
@@ -403,7 +390,7 @@ GST_START_TEST (test_video_formats_all)
         GST_VIDEO_FORMAT_UNKNOWN);
   }
   /* Take into account GST_VIDEO_FORMAT_ENCODED, UNKNOWN and DMA_DRM. */
-  fail_unless_equals_int (num, num_formats - 3);
+  fail_unless_equals_int (num, GST_VIDEO_FORMAT_LAST - 3);
 
   gst_caps_unref (caps);
 }
@@ -414,11 +401,7 @@ GST_END_TEST;
 #define HEIGHT 20
 GST_START_TEST (test_video_formats_pack_unpack)
 {
-  guint n, num_formats;
-
-  num_formats = get_num_formats ();
-
-  for (n = GST_VIDEO_FORMAT_ENCODED + 1; n < num_formats; ++n) {
+  for (guint n = GST_VIDEO_FORMAT_ENCODED + 1; n < GST_VIDEO_FORMAT_LAST; ++n) {
     const GstVideoFormatInfo *vfinfo, *unpackinfo;
     GstVideoFormat fmt = n;
     GstVideoInfo vinfo;
@@ -2174,7 +2157,7 @@ GST_START_TEST (test_video_pack_unpack2)
 {
   GstVideoFormat format;
   GTimer *timer;
-  gint num_formats, i;
+  gint i;
   GArray *packarray, *unpackarray;
 
 #define WIDTH 320
@@ -2186,11 +2169,9 @@ GST_START_TEST (test_video_pack_unpack2)
   packarray = g_array_new (FALSE, FALSE, sizeof (ConvertResult));
   unpackarray = g_array_new (FALSE, FALSE, sizeof (ConvertResult));
 
-  num_formats = get_num_formats ();
-
   GST_DEBUG ("pack/sec\t unpack/sec \tpack GB/sec\tunpack GB/sec\tformat");
 
-  for (format = GST_VIDEO_FORMAT_I420; format < num_formats; format++) {
+  for (format = GST_VIDEO_FORMAT_I420; format < GST_VIDEO_FORMAT_LAST; format++) {
     GstVideoInfo info;
     const GstVideoFormatInfo *finfo, *fuinfo;
     GstBuffer *buffer;
@@ -2528,11 +2509,8 @@ static void
 run_video_color_convert (ColorType in_type, ColorType out_type)
 {
   GstVideoFormat infmt, outfmt;
-  gint num_formats;
 
-  num_formats = get_num_formats ();
-
-  for (infmt = GST_VIDEO_FORMAT_I420; infmt < num_formats; infmt++) {
+  for (infmt = GST_VIDEO_FORMAT_I420; infmt < GST_VIDEO_FORMAT_LAST; infmt++) {
     GstVideoInfo ininfo;
     GstVideoFrame inframe;
     GstBuffer *inbuffer;
@@ -2548,7 +2526,8 @@ run_video_color_convert (ColorType in_type, ColorType out_type)
     gst_buffer_memset (inbuffer, 0, 0, -1);
     gst_video_frame_map (&inframe, &ininfo, inbuffer, GST_MAP_READ);
 
-    for (outfmt = GST_VIDEO_FORMAT_I420; outfmt < num_formats; outfmt++) {
+    for (outfmt = GST_VIDEO_FORMAT_I420; outfmt < GST_VIDEO_FORMAT_LAST;
+        outfmt++) {
       GstVideoInfo outinfo;
       GstVideoFrame outframe;
       GstBuffer *outbuffer;
@@ -2632,16 +2611,14 @@ GST_START_TEST (test_video_size_convert)
 {
   GstVideoFormat infmt, outfmt;
   GTimer *timer;
-  gint num_formats, i;
+  gint i;
   GArray *array;
 
   array = g_array_new (FALSE, FALSE, sizeof (ConvertResult));
 
   timer = g_timer_new ();
 
-  num_formats = get_num_formats ();
-
-  for (infmt = GST_VIDEO_FORMAT_I420; infmt < num_formats; infmt++) {
+  for (infmt = GST_VIDEO_FORMAT_I420; infmt < GST_VIDEO_FORMAT_LAST; infmt++) {
     GstVideoInfo ininfo, outinfo;
     GstVideoFrame inframe, outframe;
     GstBuffer *inbuffer, *outbuffer;
@@ -2812,6 +2789,62 @@ GST_START_TEST (test_video_convert)
   gst_video_frame_unmap (&inframe);
   gst_buffer_unref (inbuffer);
 
+}
+
+GST_END_TEST;
+
+GST_START_TEST (test_video_convert_with_config_update)
+{
+  GstVideoInfo ininfo, outinfo;
+  GstVideoFrame inframe, outframe;
+  GstBuffer *inbuffer, *outbuffer;
+  GstVideoConverter *convert;
+
+  fail_unless (gst_video_info_set_format (&ininfo, GST_VIDEO_FORMAT_ARGB, 320,
+          240));
+  inbuffer = gst_buffer_new_and_alloc (ininfo.size);
+  gst_buffer_memset (inbuffer, 0, 0, -1);
+  gst_video_frame_map (&inframe, &ininfo, inbuffer, GST_MAP_READ);
+
+  fail_unless (gst_video_info_set_format (&outinfo, GST_VIDEO_FORMAT_BGRx, 400,
+          300));
+  outbuffer = gst_buffer_new_and_alloc (outinfo.size);
+  gst_video_frame_map (&outframe, &outinfo, outbuffer, GST_MAP_WRITE);
+
+  convert = gst_video_converter_new (&ininfo, &outinfo,
+      gst_structure_new ("options",
+          GST_VIDEO_CONVERTER_OPT_RESAMPLER_METHOD,
+          GST_TYPE_VIDEO_RESAMPLER_METHOD, 3,
+          GST_VIDEO_CONVERTER_OPT_SRC_X, G_TYPE_INT, 10,
+          GST_VIDEO_CONVERTER_OPT_SRC_Y, G_TYPE_INT, 0,
+          GST_VIDEO_CONVERTER_OPT_SRC_WIDTH, G_TYPE_INT, 300,
+          GST_VIDEO_CONVERTER_OPT_SRC_HEIGHT, G_TYPE_INT, 220,
+          GST_VIDEO_CONVERTER_OPT_DEST_X, G_TYPE_INT, 80,
+          GST_VIDEO_CONVERTER_OPT_DEST_Y, G_TYPE_INT, 60,
+          GST_VIDEO_CONVERTER_OPT_DEST_WIDTH, G_TYPE_INT, 300,
+          GST_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT, 220, NULL));
+
+  g_assert (gst_video_info_is_equal (&ininfo,
+          gst_video_converter_get_in_info (convert)));
+  g_assert (gst_video_info_is_equal (&outinfo,
+          gst_video_converter_get_out_info (convert)));
+
+  gst_video_converter_frame (convert, &inframe, &outframe);
+
+  GstStructure *options = gst_structure_new ("options",
+      GST_VIDEO_CONVERTER_OPT_DEST_WIDTH, G_TYPE_INT, 220,
+      GST_VIDEO_CONVERTER_OPT_DEST_HEIGHT, G_TYPE_INT, 300, NULL);
+
+  gst_video_converter_set_config (convert, options);
+
+  gst_video_converter_frame (convert, &inframe, &outframe);
+
+  gst_video_converter_free (convert);
+
+  gst_video_frame_unmap (&outframe);
+  gst_buffer_unref (outbuffer);
+  gst_video_frame_unmap (&inframe);
+  gst_buffer_unref (inbuffer);
 }
 
 GST_END_TEST;
@@ -3211,8 +3244,7 @@ GST_START_TEST (test_video_formats_pstrides)
 {
   GstVideoFormat fmt = GST_VIDEO_FORMAT_I420;
 
-
-  while ((gst_video_format_to_string (fmt) != NULL)) {
+  while (fmt < GST_VIDEO_FORMAT_LAST) {
     const GstVideoFormatInfo *vf_info = gst_video_format_get_info (fmt);
     guint n_comps = GST_VIDEO_FORMAT_INFO_N_COMPONENTS (vf_info);
 
@@ -4045,10 +4077,9 @@ GST_END_TEST;
 
 GST_START_TEST (test_video_extrapolate_stride)
 {
-  guint num_formats = get_num_formats ();
   GstVideoFormat format;
 
-  for (format = 2; format < num_formats; format++) {
+  for (format = 2; format < GST_VIDEO_FORMAT_LAST; format++) {
     GstVideoInfo info;
     guint p;
 
@@ -4279,6 +4310,32 @@ GST_START_TEST (test_video_meta_serialize)
 
 GST_END_TEST;
 
+GST_START_TEST (test_dma_drm_big_engian)
+{
+  const guint32 fourcc = GST_MAKE_FOURCC ('A', 'B', 'C', 'D') | 1U << 31;
+
+  gchar *fmt = gst_video_dma_drm_fourcc_to_string (fourcc, 0);
+  fail_unless (g_strcmp0 (fmt, "ABCD_BE") == 0);
+
+  gchar *fmt_mod = gst_video_dma_drm_fourcc_to_string (fourcc, 1);
+  fail_unless (g_strcmp0 (fmt_mod, "ABCD_BE:0x0000000000000001") == 0);
+
+  guint64 parsed_mod;
+  guint32 parsed_fourcc =
+      gst_video_dma_drm_fourcc_from_string (fmt, &parsed_mod);
+  g_assert_cmpuint (parsed_fourcc, ==, fourcc);
+  g_assert_cmpuint (parsed_mod, ==, G_GUINT64_CONSTANT (0));
+
+  parsed_fourcc = gst_video_dma_drm_fourcc_from_string (fmt_mod, &parsed_mod);
+  g_assert_cmpuint (parsed_fourcc, ==, fourcc);
+  g_assert_cmpuint (parsed_mod, ==, G_GUINT64_CONSTANT (1));
+
+  g_free (fmt);
+  g_free (fmt_mod);
+}
+
+GST_END_TEST;
+
 static Suite *
 video_suite (void)
 {
@@ -4338,6 +4395,8 @@ video_suite (void)
   tcase_add_test (tc_chain, test_video_color_primaries_equivalent);
   tcase_add_test (tc_chain, test_info_dma_drm);
   tcase_add_test (tc_chain, test_video_meta_serialize);
+  tcase_add_test (tc_chain, test_video_convert_with_config_update);
+  tcase_add_test (tc_chain, test_dma_drm_big_engian);
 
   return s;
 }

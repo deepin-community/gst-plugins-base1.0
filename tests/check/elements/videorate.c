@@ -2068,6 +2068,154 @@ GST_START_TEST (test_segment_update_average_period)
 
 GST_END_TEST;
 
+static GstPadProbeReturn
+segment_update_probe_cb (GstPad * pad,
+    GstPadProbeInfo * info, gpointer user_data)
+{
+  GstEvent *event = GST_PAD_PROBE_INFO_EVENT (info);
+  GList **events = user_data;
+
+  *events = g_list_append (*events, gst_event_ref (event));
+  return GST_PAD_PROBE_OK;
+}
+
+GST_START_TEST (test_segment_update)
+{
+  GstElement *videorate;
+  GstCaps *caps;
+  GstBuffer *buf;
+
+  videorate = setup_videorate_full (&srctemplate, &downstreamsinktemplate);
+  fail_unless (gst_element_set_state (videorate,
+          GST_STATE_PLAYING) == GST_STATE_CHANGE_SUCCESS,
+      "could not set to playing");
+
+  caps = gst_caps_from_string (VIDEO_CAPS_STRING);
+  gst_check_setup_events (mysrcpad, videorate, caps, GST_FORMAT_TIME);
+  gst_caps_unref (caps);
+
+  /* Note: There is 1 buffer latency, we receive 1st buffer after pushing the
+   * 2nd, or after pushing a new segment.
+   */
+
+  /* Initial segment is [0, -1], first buffer has PTS=0 */
+  gsize frame_size = sizeof (gfloat) * 1;
+  buf = gst_buffer_new_and_alloc (frame_size);
+  GST_BUFFER_TIMESTAMP (buf) = 0;
+  gst_pad_push (mysrcpad, buf);
+  fail_unless_equals_int (g_list_length (buffers), 0);
+
+  GList *events = NULL;
+  gst_pad_add_probe (mysrcpad,
+      GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM,
+      (GstPadProbeCallback) segment_update_probe_cb, &events, NULL);
+
+  /* Set segment base time to 2nd frame's PTS */
+  GstSegment seg;
+  gst_segment_init (&seg, GST_FORMAT_TIME);
+  seg.base = 40 * GST_MSECOND;
+  gst_pad_push_event (mysrcpad, gst_event_new_segment (&seg));
+  fail_unless_equals_int (g_list_length (events), 1);
+  g_clear_list (&events, (GDestroyNotify) gst_event_unref);
+  fail_unless_equals_int (g_list_length (buffers), 1);
+  fail_unless_equals_int64 (GST_BUFFER_PTS (buffers->data), 0);
+  gst_check_drop_buffers ();
+
+  /* PTS=0 is correct because of the segment base time */
+  buf = gst_buffer_new_and_alloc (frame_size);
+  GST_BUFFER_TIMESTAMP (buf) = 0;
+  gst_pad_push (mysrcpad, buf);
+  fail_unless_equals_int (g_list_length (buffers), 0);
+
+  /* Push [0, -1] segment again with base time back to 0 */
+  gst_segment_init (&seg, GST_FORMAT_TIME);
+  gst_pad_push_event (mysrcpad, gst_event_new_segment (&seg));
+  fail_unless_equals_int (g_list_length (events), 1);
+  g_clear_list (&events, (GDestroyNotify) gst_event_unref);
+  fail_unless_equals_int (g_list_length (buffers), 1);
+  fail_unless_equals_int64 (GST_BUFFER_PTS (buffers->data), 0);
+  gst_check_drop_buffers ();
+
+  /* PTS of 3rd frame because base time is back to 0.
+   * videorate used to output a buffer with PTS back to segment.start instead of
+   * continuing from its current position. */
+  buf = gst_buffer_new_and_alloc (frame_size);
+  GST_BUFFER_TIMESTAMP (buf) = 2 * 40 * GST_MSECOND;
+  gst_pad_push (mysrcpad, buf);
+  fail_unless_equals_int (g_list_length (buffers), 0);
+
+  /* One last buffer just to verify the one we pushed previously */
+  buf = gst_buffer_new_and_alloc (frame_size);
+  GST_BUFFER_TIMESTAMP (buf) = 3 * 40 * GST_MSECOND;
+  gst_pad_push (mysrcpad, buf);
+  fail_unless_equals_int (g_list_length (buffers), 1);
+  fail_unless_equals_int64 (GST_BUFFER_PTS (buffers->data),
+      2 * 40 * GST_MSECOND);
+  gst_check_drop_buffers ();
+
+  gst_element_set_state (videorate, GST_STATE_NULL);
+
+  /* cleanup */
+  g_clear_list (&events, (GDestroyNotify) gst_event_unref);
+  cleanup_videorate (videorate);
+}
+
+GST_END_TEST;
+
+static GstFlowReturn
+gst_check_drop_only_ref_chain_func (GstPad * pad, GstObject * parent,
+    GstBuffer * buffer)
+{
+  GST_DEBUG_OBJECT (pad, "chain_func: received buffer %p", buffer);
+  ASSERT_BUFFER_REFCOUNT (buffer, "buf", 1);
+  buffers = g_list_append (buffers, buffer);
+
+  g_mutex_lock (&check_mutex);
+  g_cond_signal (&check_cond);
+  g_mutex_unlock (&check_mutex);
+
+  return GST_FLOW_OK;
+}
+
+
+GST_START_TEST (test_drop_only_ref_count)
+{
+  GstElement *videorate;
+  GstBuffer *buf;
+  GstCaps *caps;
+  GstSegment segment;
+
+  /* Create a videorate that outputs at most 1 frame per second. */
+  videorate = gst_check_setup_element ("videorate");
+  mysrcpad = gst_check_setup_src_pad (videorate, &srctemplate);
+  mysinkpad = gst_check_setup_sink_pad (videorate, &sinktemplate);
+  gst_pad_set_chain_function (mysinkpad, gst_check_drop_only_ref_chain_func);
+  gst_pad_set_active (mysrcpad, TRUE);
+  gst_pad_set_active (mysinkpad, TRUE);
+
+  g_object_set (videorate, "drop-only", TRUE, NULL);
+  fail_unless (gst_element_set_state (videorate,
+          GST_STATE_PLAYING) == GST_STATE_CHANGE_SUCCESS,
+      "could not set to playing");
+  caps = gst_caps_from_string (VIDEO_CAPS_STRING);
+  gst_check_setup_events (mysrcpad, videorate, caps, GST_FORMAT_TIME);
+  gst_caps_unref (caps);
+
+  /* Segment starts at 0  */
+  gst_segment_init (&segment, GST_FORMAT_TIME);
+  fail_unless (gst_pad_push_event (mysrcpad, gst_event_new_segment (&segment)));
+
+  buf = gst_buffer_new_and_alloc (4);
+  GST_BUFFER_PTS (buf) = 0;
+  fail_unless (gst_pad_push (mysrcpad, buf) == GST_FLOW_OK);
+  fail_unless_equals_int (g_list_length (buffers), 1);
+
+  /* cleanup */
+  cleanup_videorate (videorate);
+}
+
+GST_END_TEST;
+
 static Suite *
 videorate_suite (void)
 {
@@ -2098,6 +2246,8 @@ videorate_suite (void)
   tcase_add_test (tc_chain, test_segment_update_start_advance);
   tcase_add_test (tc_chain, test_segment_update_same);
   tcase_add_test (tc_chain, test_segment_update_average_period);
+  tcase_add_test (tc_chain, test_segment_update);
+  tcase_add_test (tc_chain, test_drop_only_ref_count);
 
   return s;
 }

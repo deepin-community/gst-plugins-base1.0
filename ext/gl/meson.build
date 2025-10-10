@@ -46,6 +46,53 @@ opengl_sources = [
   'gstglutils.c'
 ]
 
+opengl_headers = [
+  'caopengllayersink.h',
+  'gstgloverlaycompositorelement.h',
+  'gstglcolorbalance.h',
+  'gstglmixerbin.h',
+  'gstglstereosplit.h',
+  'gstglstereomix.h',
+  'gstgldeinterlace.h',
+  'gstglbumper.h',
+  'gstglfiltershader.h',
+  'gstgltestsrc.h',
+  'gstglmosaic.h',
+  'gstgldifferencematte.h',
+  'gstgltransformation.h',
+  'gstglalpha.h',
+  'gstgloverlay.h',
+  'gstglvideomixer.h',
+  'gstglcolorscale.h',
+  'gstglelements.h',
+  'gstglutils.h',
+  'gstglfiltercube.h',
+  'gstglfilterglass.h',
+  'gstgluploadelement.h',
+  'gstglimagesink.h',
+  'gstglcolorconvertelement.h',
+  'gltestsrc.h',
+  'gstgleffects.h',
+  'gstglfilterapp.h',
+  'gstgldmabufbufferpool.h',
+  'gstgldownloadelement.h',
+  'gstglfilterreflectedscreen.h',
+  'gstglviewconvert.h',
+  'gstglfilterbin.h',
+  'gstglsinkbin.h',
+  'gstglsrcbin.h',
+  'gstglvideoflip.h',
+]
+
+doc_sources = []
+foreach s: opengl_sources + opengl_headers
+  doc_sources += meson.current_source_dir() / s
+endforeach
+
+plugin_sources += {
+  'opengl': pathsep.join(doc_sources)
+}
+
 if get_option('gl').disabled() or not gstgl_dep.found()
   subdir_done()
 endif
@@ -63,7 +110,6 @@ endif
 graphene_dep = dependency('graphene-gobject-1.0',
   version : '>=1.4.0',
   required : get_option('gl-graphene'),
-  fallback: ['graphene', 'graphene_gobject_dep'],
   default_options: ['introspection=disabled', 'installed_tests=false', 'tests=false'])
 
 if graphene_dep.found()
@@ -93,6 +139,12 @@ if png_dep.found()
   endif
 endif
 
+if glconf.get('GST_GL_HAVE_DMABUF', 0) == 1
+  opengl_sources += [
+    'gstgldmabufbufferpool.c',
+  ]
+endif
+
 if glconf.get('GST_GL_HAVE_WINDOW_COCOA', 0) == 1
   corefoundation_dep = dependency('appleframeworks', modules : ['CoreFoundation'], required : false)
   foundation_dep = dependency('appleframeworks', modules : ['Foundation'], required : false)
@@ -114,8 +166,14 @@ if bcm_host_dep.found()
   optional_deps += bcm_host_dep
 endif
 
-if egl_dep.found() and cc.has_header('libdrm/drm_fourcc.h')
-  optional_deps += allocators_dep
+if libdrm_dep.type_name() == 'internal'
+  drm_has_fourcc = true
+else
+  drm_has_fourcc = cc.has_header('drm_fourcc.h', dependencies: libdrm_dep)
+endif
+
+if egl_dep.found() and drm_has_fourcc
+  optional_deps += [allocators_dep, libdrm_dep]
 endif
 
 if ['darwin', 'ios'].contains(host_system)

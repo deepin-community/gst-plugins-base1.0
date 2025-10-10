@@ -52,7 +52,9 @@
 
 #if GST_GL_HAVE_DMABUF
 #include <gst/allocators/gstdmabuf.h>
-#include <libdrm/drm_fourcc.h>
+#ifdef HAVE_LIBDRM
+#include <drm_fourcc.h>
+#endif
 
 #ifndef DRM_FORMAT_R8
 #define DRM_FORMAT_R8 fourcc_code('R', '8', ' ', ' ')
@@ -487,10 +489,9 @@ gst_egl_image_from_texture (GstGLContext * context, GstGLMemory * gl_mem,
  * target.
  */
 static int
-_drm_rgba_fourcc_from_info (const GstVideoInfo * info, int plane,
+_drm_rgba_fourcc_from_format (GstVideoFormat format, int plane,
     GstGLFormat * out_format)
 {
-  GstVideoFormat format = GST_VIDEO_INFO_FORMAT (info);
 #if G_BYTE_ORDER == G_LITTLE_ENDIAN
   const gint rgba_fourcc = DRM_FORMAT_ABGR8888;
   const gint rgb_fourcc = DRM_FORMAT_BGR888;
@@ -655,7 +656,8 @@ gst_egl_image_from_dmabuf (GstGLContext * context,
   gboolean with_modifiers;
 
   gst_video_format_info_component (in_info->finfo, plane, comp);
-  fourcc = _drm_rgba_fourcc_from_info (in_info, plane, &format);
+  fourcc = _drm_rgba_fourcc_from_format (GST_VIDEO_INFO_FORMAT (in_info), plane,
+      &format);
   GST_DEBUG ("fourcc %.4s (%d) plane %d (%dx%d)",
       (char *) &fourcc, fourcc, plane,
       GST_VIDEO_INFO_COMP_WIDTH (in_info, comp[0]),
@@ -1041,7 +1043,7 @@ gst_egl_image_export_dmabuf (GstEGLImage * image, int *fd, gint * stride,
   EGLint egl_stride = 0;
   EGLint egl_offset = 0;
   int fourcc;
-  EGLuint64KHR modifier;
+  EGLuint64KHR modifier[GST_VIDEO_MAX_PLANES] = { 0, };
 
   gst_eglExportDMABUFImageQueryMESA =
       gst_gl_context_get_proc_address (image->context,
@@ -1067,16 +1069,20 @@ gst_egl_image_export_dmabuf (GstEGLImage * image, int *fd, gint * stride,
   gst_object_unref (display_egl);
 
   if (!gst_eglExportDMABUFImageQueryMESA (egl_display, image->image,
-          &fourcc, &num_planes, &modifier))
+          &fourcc, &num_planes, modifier))
     return FALSE;
 
   /* Don't allow multi-plane dmabufs */
-  if (num_planes > 1)
+  if (num_planes > 1) {
+    GST_WARNING ("Multi plane DMAbufs are not allowed to export");
     return FALSE;
+  }
 
   /* FIXME We don't support modifiers */
-  if (modifier != DRM_FORMAT_MOD_LINEAR)
+  if (modifier[0] != DRM_FORMAT_MOD_LINEAR) {
+    GST_WARNING ("Non-linear DMAbufs are not allowed to export");
     return FALSE;
+  }
 
   if (!gst_eglExportDMABUFImageMESA (egl_display, image->image, &egl_fd,
           &egl_stride, &egl_offset))
@@ -1084,12 +1090,79 @@ gst_egl_image_export_dmabuf (GstEGLImage * image, int *fd, gint * stride,
 
   GST_DEBUG_OBJECT (image->context, "Export DMABuf with fourcc %"
       GST_FOURCC_FORMAT ", modififers %" G_GUINT64_FORMAT
-      ", stride %i and offset %i", GST_FOURCC_ARGS (fourcc), modifier,
+      ", stride %i and offset %i", GST_FOURCC_ARGS (fourcc), modifier[0],
       egl_stride, egl_offset);
 
   *fd = egl_fd;
   *stride = egl_stride;
   *offset = egl_offset;
+
+  return TRUE;
+}
+
+/**
+ * gst_egl_image_can_emulate:
+ * @context: a #GstGLContext (must be an EGL context)
+ * @format: a #GstVideoFormat
+ *
+ * Checks if the given @context can emulate @format using a limited subset of
+ * RGB texture formats. Such @format is then suitable for importing using
+ * gst_egl_image_from_dmabuf() even when GL supports the video format as
+ * external-only or not at all.
+ *
+ * Since: 1.26
+ *
+ * Returns: #TRUE if @format can be emulated
+ */
+gboolean
+gst_egl_image_can_emulate (GstGLContext * context, GstVideoFormat format)
+{
+  const GstVideoFormatInfo *info;
+  guint i;
+  GstGLFormat out_format;
+
+  info = gst_video_format_get_info (format);
+
+  for (i = 0; i != GST_VIDEO_FORMAT_INFO_N_PLANES (info); ++i) {
+    int fourcc;
+
+    fourcc = _drm_rgba_fourcc_from_format (format, i, &out_format);
+    if (fourcc == -1) {
+      return FALSE;
+    }
+
+    if (GST_VIDEO_FORMAT_INFO_IS_YUV (info)) {
+      /* For YUV formats we only support linear modifier. */
+      if (!gst_gl_context_egl_format_supports_modifier (context, fourcc,
+              DRM_FORMAT_MOD_LINEAR, FALSE)) {
+        return FALSE;
+      }
+    } else if (GST_VIDEO_FORMAT_INFO_IS_RGB (info)) {
+      /* For RGB formats any DMA format that is not external-only will do. */
+      const GArray *dma_modifiers;
+      guint j;
+
+      if (!gst_gl_context_egl_get_format_modifiers (context, fourcc,
+              &dma_modifiers)) {
+        return FALSE;
+      }
+
+      for (j = 0; j < dma_modifiers->len; ++j) {
+        GstGLDmaModifier *mod =
+            &g_array_index (dma_modifiers, GstGLDmaModifier, j);
+
+        if (!mod->external_only) {
+          break;
+        }
+      }
+
+      if (j == dma_modifiers->len) {
+        return FALSE;
+      }
+    } else {
+      return FALSE;
+    }
+  }
 
   return TRUE;
 }

@@ -1,3 +1,170 @@
+gst-plugins-base1.0 (1.26.6-3) unstable; urgency=medium
+
+  [ Simon McVittie ]
+  * gir1.2-gst-plugins-base-1.0: Add ${gir:Provides}
+  * libgstreamer-plugins-base1.0-dev: Add ${gir:Provides}
+  * libgstreamer-plugins-base1.0-dev: Add ${gir:Depends}
+  * Install GstAudio-1.0.gir into ${libdir}/gir-1.0 (Closes: #1023591)
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Tue, 30 Sep 2025 14:56:49 +0200
+
+gst-plugins-base1.0 (1.26.6-2) unstable; urgency=medium
+
+  [ Simon McVittie ]
+  * d/control: Add Build-Depends on systematic names for gir1.2-*-dev packages
+  * d/control: Replace libgirepository1.0-dev B-D with gobject-introspection
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Tue, 30 Sep 2025 14:30:28 +0200
+
+gst-plugins-base1.0 (1.26.6-1) unstable; urgency=medium
+
+  * New upstream version 1.26.6
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Mon, 15 Sep 2025 09:26:26 +0200
+
+gst-plugins-base1.0 (1.26.5-2) unstable; urgency=medium
+
+  * trixie has been released, re-upload to unstable
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Mon, 11 Aug 2025 08:53:52 +0200
+
+gst-plugins-base1.0 (1.26.5-1) experimental; urgency=medium
+
+  * New upstream version 1.26.5
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Fri, 08 Aug 2025 08:55:38 +0200
+
+gst-plugins-base1.0 (1.26.4-1) experimental; urgency=medium
+
+  * d/copyright: add reference to /usr/share/common-licenses/LGPL
+  * d/watch: pin to 1.26.x
+  * New upstream version 1.26.4
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Wed, 16 Jul 2025 19:57:53 +0200
+
+gst-plugins-base1.0 (1.26.3-1) experimental; urgency=medium
+
+  * d/copyright: duplicate-globbing-patterns ext/ogg/vorbis_parse.c
+  * d/copyright: BSD (3 clause) -> BSD-3-clause
+  * d/copyright: fix <thiago.sousa.santos collabora co uk>
+  * d/copyright: add LGPL-2.1+
+  * d/copyright: add GPL-2 paragraph
+  * d/copyright: add MIT paragraph
+  * d/copyright: superfluous-file-pattern
+  * d/control: bump Standards-Version to 4.7.2
+  * New upstream version 1.26.3
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Fri, 27 Jun 2025 08:55:58 +0200
+
+gst-plugins-base1.0 (1.26.2-1) unstable; urgency=medium
+
+  * d/copyright: review with licenserecon
+  * New upstream version 1.26.2
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Fri, 30 May 2025 09:27:24 +0200
+
+gst-plugins-base1.0 (1.26.1-1) unstable; urgency=medium
+
+  * d/copyright: add default
+  * New upstream version 1.26.1
+  * d/patches: remove 0002-test-latomic.patch
+  * d/patches: remove 0003-urisourcebin-Make-parsebin-activation-more-reliable.patch
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Fri, 25 Apr 2025 08:53:31 +0200
+
+gst-plugins-base1.0 (1.26.0-1) unstable; urgency=medium
+
+  * Revert "d/watch: pin on 1.24.x"
+  * New upstream version 1.26.0
+  * d/patches: remove video-Move-Y410-into-the-correct-place-for-big-endian-pla.patch
+  * d/symbols: add 1.25.1 new symbols
+  * d/control: bump GStreamer version dependency
+  * d/patches: test for latomic
+  * d/symbols: remove gst_egl_image_can_emulate for hurd
+  * d/patches: add 0003-urisourcebin-Make-parsebin-activation-more-reliable
+  * d/control: update dependency version to 1.25.90
+  * d/symbols: update with new h265 codec utils
+  * d/control: update with EGL symbol
+  * d/control: update GStreamer dependencies to >= 1.26.0
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Wed, 12 Mar 2025 09:42:36 +0100
+
+gst-plugins-base1.0 (1.24.12-1) unstable; urgency=medium
+
+  * New upstream version 1.24.12
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Thu, 30 Jan 2025 08:45:37 +0100
+
+gst-plugins-base1.0 (1.24.11-3) unstable; urgency=medium
+
+  * d/patches: disable some GL/Mesa tests for ppc64el failures
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Wed, 29 Jan 2025 16:44:55 +0100
+
+gst-plugins-base1.0 (1.24.11-2) unstable; urgency=medium
+
+  * d/watch: pin on 1.24.x
+  * d/control: hurd-any dependency fixes (Closes: #1093411)
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Mon, 20 Jan 2025 10:19:26 +0100
+
+gst-plugins-base1.0 (1.24.11-1) unstable; urgency=medium
+
+  * New upstream version 1.24.11
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Tue, 07 Jan 2025 09:13:26 +0100
+
+gst-plugins-base1.0 (1.24.10-1) unstable; urgency=medium
+
+  * New upstream version 1.24.10
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Wed, 04 Dec 2024 09:16:43 +0100
+
+gst-plugins-base1.0 (1.24.9-1) unstable; urgency=medium
+
+  [ Samuel Thibault ]
+  * fix hurd-any builds (Closes: #1072224)
+
+  [ Marc Leeman ]
+  * New upstream version 1.24.9
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Thu, 31 Oct 2024 08:45:19 +0100
+
+gst-plugins-base1.0 (1.24.8-1) unstable; urgency=medium
+
+  * New upstream version 1.24.8
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Thu, 19 Sep 2024 14:13:52 +0200
+
+gst-plugins-base1.0 (1.24.7-4) unstable; urgency=medium
+
+  * Team upload
+  * Try again to fix rust-gstreamer-video test on s390x
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Fri, 06 Sep 2024 21:16:21 -0400
+
+gst-plugins-base1.0 (1.24.7-3) unstable; urgency=medium
+
+  * Team upload
+  * Apply updated patch to try to fix rust-gstreamer-video test on s390x
+  * Stop ignoring build test failures on arm64 and ppc64el
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Thu, 05 Sep 2024 08:41:28 -0400
+
+gst-plugins-base1.0 (1.24.7-2) unstable; urgency=medium
+
+  * Team upload
+  * Cherry-pick proposed patch to fix rust-gstreamer-video test on s390x
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Wed, 28 Aug 2024 17:18:05 -0400
+
+gst-plugins-base1.0 (1.24.7-1) unstable; urgency=medium
+
+  * d/rules: debian-rules-parses-dpkg-parsechangelog
+  * New upstream version 1.24.7
+
+ -- Marc Leeman <marc.leeman@gmail.com>  Wed, 21 Aug 2024 17:21:25 +0200
+
 gst-plugins-base1.0 (1.24.6-1) unstable; urgency=medium
 
   * New upstream version 1.24.6
