@@ -127,7 +127,7 @@ static GstStaticPadTemplate gst_video_rate_src_template =
     GST_PAD_SRC,
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS ("video/x-raw(ANY);" "video/x-bayer(ANY);"
-        "image/jpeg(ANY);" "image/png(ANY)")
+        "image/jpeg(ANY); image/x-jxsc(ANY), alignment=frame; image/png(ANY)")
     );
 
 static GstStaticPadTemplate gst_video_rate_sink_template =
@@ -135,7 +135,7 @@ static GstStaticPadTemplate gst_video_rate_sink_template =
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS ("video/x-raw(ANY);" "video/x-bayer(ANY);"
-        "image/jpeg(ANY);" "image/png(ANY)")
+        "image/jpeg(ANY); image/x-jxsc(ANY), alignment=frame; image/png(ANY)")
     );
 
 static void gst_video_rate_swap_prev (GstVideoRate * videorate,
@@ -765,6 +765,12 @@ gst_video_rate_push_buffer (GstVideoRate * videorate, GstBuffer * outbuf,
   /* We do not need to update time in VFR (variable frame rate) mode */
   if (!videorate->drop_only) {
     GST_BUFFER_PTS (outbuf) = push_ts;
+  } else {
+    /* In drop-only mode, we want GstBaseTransform to push the buffer.
+     * This avoids storing extra reference to the buffer. */
+    gst_buffer_unref (outbuf);
+
+    return res;
   }
 
   GST_LOG_OBJECT (videorate,
@@ -973,6 +979,24 @@ gst_video_rate_rollback_to_prev_caps_if_needed (GstVideoRate * videorate)
   return prev_caps;
 }
 
+/* FIXME: audiorate has a copy, should it be public API? */
+static guint64
+convert_position (GstSegment * old_segment, GstSegment * new_segment,
+    guint64 position)
+{
+  g_return_val_if_fail (old_segment->format == new_segment->format, -1);
+  if (position == -1)
+    return -1;
+  position += old_segment->base;
+  if (position < new_segment->base)
+    return -1;
+  position -= new_segment->base;
+  if (position < new_segment->start || (new_segment->stop != -1
+          && position > new_segment->stop))
+    return -1;
+  return position;
+}
+
 static gboolean
 gst_video_rate_sink_event (GstBaseTransform * trans, GstEvent * event)
 {
@@ -1033,13 +1057,26 @@ gst_video_rate_sink_event (GstBaseTransform * trans, GstEvent * event)
 
           gst_caps_unref (rolled_back_caps);
         }
-        if (segment.rate < 0)
+
+        /* Convert next_ts and last_ts to new segment. */
+        videorate->next_ts =
+            convert_position (&videorate->segment, &segment,
+            videorate->next_ts);
+        if (videorate->next_ts == -1)
+          videorate->last_ts = -1;
+        videorate->last_ts =
+            convert_position (&videorate->segment, &segment,
+            videorate->last_ts);
+
+        if (videorate->next_ts != -1)
+          videorate->base_ts = videorate->next_ts;
+        else if (segment.rate < 0)
           videorate->base_ts = segment.stop;
         else
           videorate->base_ts = segment.start;
+
         videorate->out_frame_count = 0;
-        videorate->next_ts = GST_CLOCK_TIME_NONE;
-        videorate->last_ts = GST_CLOCK_TIME_NONE;
+
         gst_buffer_replace (&videorate->prevbuf, NULL);
       }
 
@@ -1225,8 +1262,8 @@ gst_video_rate_src_event (GstBaseTransform * trans, GstEvent * event)
         gst_event_unref (event);
         event = gst_event_new_qos (type, proportion, diff, timestamp);
       }
-      /* Fallthrough */
     }
+      /* FALLTHROUGH */
     default:
       res = gst_pad_push_event (sinkpad, event);
       break;
@@ -1788,17 +1825,8 @@ gst_video_rate_transform_ip (GstBaseTransform * trans, GstBuffer * buffer)
     if (videorate->drop_only) {
       if ((videorate->segment.rate > 0.0 && in_ts >= videorate->next_ts) ||
           (videorate->segment.rate < 0.0 && in_ts <= videorate->next_ts)) {
-        GstFlowReturn r;
-
-        /* The buffer received from basetransform is guaranteed to be writable.
-         * It just needs to be reffed so the buffer won't be consumed once pushed and
-         * GstBaseTransform can get its reference back. */
-        if ((r = gst_video_rate_push_buffer (videorate,
-                    gst_buffer_ref (buffer), FALSE,
-                    GST_CLOCK_TIME_NONE, FALSE)) != GST_FLOW_OK) {
-          res = r;
-          goto done;
-        }
+        res = gst_video_rate_push_buffer (videorate,
+            gst_buffer_ref (buffer), FALSE, GST_CLOCK_TIME_NONE, FALSE);
       } else {
         videorate->drop++;
       }
@@ -1890,8 +1918,12 @@ gst_video_rate_transform_ip (GstBaseTransform * trans, GstBuffer * buffer)
 
         next_ts = videorate->base_ts - (
             (videorate->base_ts - next_ts) * videorate->rate);
-        next_end_ts = videorate->base_ts - (MAX (0,
-                (videorate->base_ts - next_end_ts)) * videorate->rate);
+        if (videorate->base_ts > next_end_ts)
+          next_end_ts =
+              videorate->base_ts - ((videorate->base_ts -
+                  next_end_ts) * videorate->rate);
+        else
+          next_end_ts = videorate->base_ts;
 
         diff1 = ABSDIFF (prev_endtime, next_end_ts);
         diff2 = ABSDIFF (in_endtime, next_end_ts);

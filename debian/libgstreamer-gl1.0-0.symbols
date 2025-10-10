@@ -32,11 +32,17 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_context_get_gl_display@Base 1.14.0
  gst_context_set_gl_display@Base 1.14.0
  gst_egl_get_error_string@Base 1.14.0
+ gst_egl_image_cache_lookup@Base 1.25.1
+ gst_egl_image_cache_new@Base 1.25.1
+ gst_egl_image_cache_ref@Base 1.25.1
+ gst_egl_image_cache_store@Base 1.25.1
+ gst_egl_image_cache_unref@Base 1.25.1
+ (arch=linux-any)gst_egl_image_can_emulate@Base 1.25.1
  (arch=linux-any kfreebsd-any)gst_egl_image_export_dmabuf@Base 1.14.0
  (arch=linux-any kfreebsd-any)gst_egl_image_from_dmabuf@Base 1.14.0
  (arch=linux-any kfreebsd-any)gst_egl_image_from_dmabuf_direct@Base 1.16.0
  (arch=linux-any kfreebsd-any)gst_egl_image_from_dmabuf_direct_target@Base 1.18.0
- gst_egl_image_from_dmabuf_direct_target_with_dma_drm@Base 1.23.1
+ (arch=linux-any)gst_egl_image_from_dmabuf_direct_target_with_dma_drm@Base 1.23.1
  gst_egl_image_from_texture@Base 1.14.0
  gst_egl_image_get_image@Base 1.14.0
  gst_egl_image_get_type@Base 1.14.0
@@ -149,6 +155,7 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_display_egl_new@Base 1.14.0
  gst_gl_display_egl_new_surfaceless@Base 1.23.1
  gst_gl_display_egl_new_with_egl_display@Base 1.14.0
+ gst_gl_display_egl_set_foreign@Base 1.25.90
  gst_gl_display_ensure_context@Base 1.23.1
  gst_gl_display_filter_gl_api@Base 1.14.0
  gst_gl_display_find_window@Base 1.14.0
@@ -170,6 +177,9 @@ libgstgl-1.0.so.0 libgstreamer-gl1.0-0 #MINVER#
  gst_gl_display_x11_get_type@Base 1.14.0
  gst_gl_display_x11_new@Base 1.14.0
  gst_gl_display_x11_new_with_display@Base 1.14.0
+ gst_gl_dma_buf_transform_drm_formats_to_gst_formats@Base 1.25.1
+ gst_gl_dma_buf_transform_gst_formats_to_drm_formats@Base 1.25.1
+ gst_gl_drm_format_flags_get_type@Base 1.25.1
  gst_gl_element_propagate_display_context@Base 1.14.0
  gst_gl_ensure_element_data@Base 1.14.0
  gst_gl_filter_add_rgba_pad_templates@Base 1.14.0

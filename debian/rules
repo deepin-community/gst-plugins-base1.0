@@ -1,15 +1,14 @@
 #!/usr/bin/make -f
 
 include /usr/share/dpkg/default.mk
+include /usr/share/dpkg/pkg-info.mk
 
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 export DEB_LDFLAGS_MAINT_APPEND = -Wl,-O1 -Wl,-z,defs
 export HOME=$(CURDIR)/fake-home
 
-# debian package version
-version=$(shell dpkg-parsechangelog | grep ^Version: | cut -d ' ' -f 2)
 # upstream version
-gst_version=$(shell echo $(version) | cut -d '-' -f 1)
+gst_version=$(shell echo $(DEB_VERSION) | cut -d '-' -f 1)
 
 # Let's decide the package name and url depending on the distribution
 DISTRO = "$(shell dpkg-vendor --query vendor)"
@@ -33,6 +32,7 @@ conf_flags += -Dauto_features=enabled -Dexamples=disabled -Dtremor=disabled -Ddo
 
 ifeq ($(DEB_HOST_ARCH_OS),hurd)
 conf_flags += -Dcdparanoia=disabled
+conf_flags += -Ddrm=disabled
 endif
 
 ifneq ($(DEB_HOST_ARCH_OS),linux)
@@ -50,7 +50,7 @@ override_dh_auto_configure:
 
 # Only make the tests fail for key architectures
 override_dh_auto_test:
-ifneq (,$(filter $(DEB_HOST_ARCH), amd64))
+ifneq (,$(filter $(DEB_HOST_ARCH), amd64 arm64 ppc64el))
 	xvfb-run dh_auto_test
 else
 	xvfb-run dh_auto_test || true

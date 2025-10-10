@@ -39,7 +39,7 @@ usr/lib/*/pkgconfig/gstreamer-tag-1.0.pc
 usr/lib/*/pkgconfig/gstreamer-video-1.0.pc
 usr/share/gir-*/GstAllocators-1.0.gir
 usr/share/gir-*/GstApp-1.0.gir
-usr/share/gir-*/GstAudio-1.0.gir
+usr/share/gir-1.0/GstAudio-1.0.gir      usr/lib/${DEB_HOST_MULTIARCH}/gir-1.0
 usr/share/gir-*/GstGL*-1.0.gir
 usr/share/gir-*/GstPbutils-1.0.gir
 usr/share/gir-*/GstRtp-1.0.gir
