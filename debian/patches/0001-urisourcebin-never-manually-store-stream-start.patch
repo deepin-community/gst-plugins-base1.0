@@ -1,0 +1,84 @@
+From: =?utf-8?q?Th=C3=A9o_Maillart?= <tmaillart@freebox.fr>
+Date: Fri, 31 Jan 2025 17:56:44 +0100
+Subject: urisourcebin: never manually store stream-start
+
+The copy of the exact same stream-start event prevents the multiqueue's sink
+event function from being called because it is already stored on both pads at
+link time
+The text streams are no longer considered sparse by the multiqueue, so
+interleave calculation is broken and makes us consume a lot of ram and we can
+end up killed by the kernel because of this
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/9385>
+---
+ gst/playback/gsturisourcebin.c | 29 ++++++++++++++---------------
+ 1 file changed, 14 insertions(+), 15 deletions(-)
+
+diff --git a/gst/playback/gsturisourcebin.c b/gst/playback/gsturisourcebin.c
+index a0fd273..f163835 100644
+--- a/gst/playback/gsturisourcebin.c
++++ b/gst/playback/gsturisourcebin.c
+@@ -745,7 +745,6 @@ add_stream_start_custom_flag (GstEvent ** event)
+ typedef struct
+ {
+   GstPad *target_pad;
+-  gboolean rewrite_stream_start;
+ } CopyEventData;
+ 
+ static gboolean
+@@ -754,10 +753,6 @@ copy_sticky_events (GstPad * pad, GstEvent ** event, gpointer user_data)
+   CopyEventData *data = user_data;
+   GstPad *gpad = data->target_pad;
+ 
+-  if (data->rewrite_stream_start &&
+-      GST_EVENT_TYPE (*event) == GST_EVENT_STREAM_START) {
+-    add_stream_start_custom_flag (event);
+-  }
+   GST_DEBUG_OBJECT (gpad,
+       "store sticky event from %" GST_PTR_FORMAT " %" GST_PTR_FORMAT, pad,
+       *event);
+@@ -766,6 +761,17 @@ copy_sticky_events (GstPad * pad, GstEvent ** event, gpointer user_data)
+   return TRUE;
+ }
+ 
++static gboolean
++rewrite_stream_start (GstPad * pad, GstEvent ** event, gpointer user_data)
++{
++  if (GST_EVENT_TYPE (*event) == GST_EVENT_STREAM_START) {
++    add_stream_start_custom_flag (event);
++    return FALSE;
++  }
++
++  return TRUE;
++}
++
+ static GstPadProbeReturn
+ demux_pad_events (GstPad * pad, GstPadProbeInfo * info, OutputSlotInfo * slot);
+ 
+@@ -1247,7 +1253,6 @@ new_output_slot (ChildSrcPadInfo * info, GstPad * originating_pad)
+   GstElement *queue = NULL;
+   const gchar *elem_name;
+   gboolean use_downloadbuffer;
+-  CopyEventData copy_data = { 0, };
+ 
+   GST_DEBUG_OBJECT (urisrc,
+       "use_queue2:%d use_downloadbuffer:%d, demuxer:%d, originating_pad:%"
+@@ -1277,15 +1282,9 @@ new_output_slot (ChildSrcPadInfo * info, GstPad * originating_pad)
+     slot->queue_sinkpad =
+         gst_element_request_pad_simple (info->multiqueue, "sink_%u");
+     srcpad = gst_pad_get_single_internal_link (slot->queue_sinkpad);
+-    if (urisrc->is_adaptive || (info->demuxer_is_parsebin)) {
+-      copy_data.rewrite_stream_start = TRUE;
+-    }
+-    copy_data.target_pad = slot->queue_sinkpad;
+-    gst_pad_sticky_events_foreach (originating_pad, copy_sticky_events,
+-        &copy_data);
+-    copy_data.target_pad = srcpad;
+-    gst_pad_sticky_events_foreach (originating_pad, copy_sticky_events,
+-        &copy_data);
++    if (urisrc->is_adaptive || (info->demuxer_is_parsebin))
++      gst_pad_sticky_events_foreach (originating_pad, rewrite_stream_start,
++          NULL);
+ 
+     if (info->demuxer) {
+       /* Make sure we add the event probe *before* linking */

@@ -1,0 +1,24 @@
+From: Jaehoon Lee <jaehoon85.lee@lge.com>
+Date: Wed, 19 Nov 2025 13:36:46 +0900
+Subject: glfiltershader: Add missing unlock
+
+Add missing unlock in glfiltershader
+for an exceptional return case.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/10138>
+---
+ ext/gl/gstglfiltershader.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ext/gl/gstglfiltershader.c b/ext/gl/gstglfiltershader.c
+index 543a27f..5d6df9a 100644
+--- a/ext/gl/gstglfiltershader.c
++++ b/ext/gl/gstglfiltershader.c
+@@ -503,6 +503,7 @@ _maybe_recompile_shader (GstGLFilterShader * filtershader)
+     return shader;
+   }
+ 
++  GST_OBJECT_UNLOCK (filtershader);
+   return NULL;
+ 
+ print_error:

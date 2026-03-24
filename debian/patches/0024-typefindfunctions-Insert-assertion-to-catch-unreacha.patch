@@ -1,0 +1,25 @@
+From: Jaehoon Lee <jaehoon85.lee@lge.com>
+Date: Mon, 17 Nov 2025 16:42:17 +0900
+Subject: typefindfunctions: Insert assertion to catch unreachable logic
+
+Add an assertion before the final return statement,
+as the variable ch_mod can only take values in the
+range [0, 3], making that code path unreachable.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/10190>
+---
+ gst/typefind/gsttypefindfunctions.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/gst/typefind/gsttypefindfunctions.c b/gst/typefind/gsttypefindfunctions.c
+index f7f7f75..c18ad05 100644
+--- a/gst/typefind/gsttypefindfunctions.c
++++ b/gst/typefind/gsttypefindfunctions.c
+@@ -5380,6 +5380,7 @@ sbc_check_header (const guint8 * data, gsize len, guint * rate,
+   else if (ch_mode == 3)
+     return 4 + (n_subbands * 2) / 2 + (n_subbands + n_blocks * bitpool) / 8;
+ 
++  g_assert_not_reached ();
+   return 0;
+ }
+ 

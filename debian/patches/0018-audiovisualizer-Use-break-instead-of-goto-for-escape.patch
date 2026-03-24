@@ -1,0 +1,25 @@
+From: Jaehoon Lee <jaehoon85.lee@lge.com>
+Date: Wed, 19 Nov 2025 13:42:01 +0900
+Subject: audiovisualizer: Use break instead of goto for escape logic
+
+Use break instead of goto to escape and prevent cases
+where config_lock might remain unlocked.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/10188>
+---
+ gst-libs/gst/pbutils/gstaudiovisualizer.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gst-libs/gst/pbutils/gstaudiovisualizer.c b/gst-libs/gst/pbutils/gstaudiovisualizer.c
+index c7a4c42..562dd79 100644
+--- a/gst-libs/gst/pbutils/gstaudiovisualizer.c
++++ b/gst-libs/gst/pbutils/gstaudiovisualizer.c
+@@ -1190,7 +1190,7 @@ gst_audio_visualizer_chain (GstPad * pad, GstObject * parent,
+       if (!klass->render (scope, inbuf, &outframe)) {
+         ret = GST_FLOW_ERROR;
+         gst_video_frame_unmap (&outframe);
+-        goto beach;
++        break;
+       } else {
+         /* run various post processing (shading and geometric transformation) */
+         /* FIXME: SHADER assumes 32bpp */

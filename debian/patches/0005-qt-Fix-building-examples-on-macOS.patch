@@ -1,0 +1,72 @@
+From: Nirbheek Chauhan <nirbheek@centricular.com>
+Date: Mon, 29 Sep 2025 16:11:30 +0530
+Subject: qt: Fix building examples on macOS
+
+GL/gl.h is an incorrect include on macOS, and the correct include is
+already done by gstgl.
+
+qt_current_nsopengl_context() wasn't being exported, leading to build
+failures
+
+Also add comments to gstqtglutility.cc to clarify dense #ifdef usage.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/9826>
+---
+ tests/examples/gl/qt/mousevideooverlay/pipeline.cpp     | 1 -
+ tests/examples/gl/qt/qglwidgetvideooverlay/pipeline.cpp | 1 -
+ tests/examples/gl/qt/qglwtextureshare/meson.build       | 4 ++++
+ tests/examples/gl/qt/qglwtextureshare/qglrenderer.cpp   | 2 +-
+ 4 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/tests/examples/gl/qt/mousevideooverlay/pipeline.cpp b/tests/examples/gl/qt/mousevideooverlay/pipeline.cpp
+index a530d96..3561723 100644
+--- a/tests/examples/gl/qt/mousevideooverlay/pipeline.cpp
++++ b/tests/examples/gl/qt/mousevideooverlay/pipeline.cpp
+@@ -20,7 +20,6 @@
+ 
+ #include <gst/video/videooverlay.h>
+ #include <gst/video/video.h>
+-#include <GL/gl.h>
+ #include "../gl-compat-defines.h"
+ #include "pipeline.h"
+ 
+diff --git a/tests/examples/gl/qt/qglwidgetvideooverlay/pipeline.cpp b/tests/examples/gl/qt/qglwidgetvideooverlay/pipeline.cpp
+index 10951f8..b0fe3c3 100644
+--- a/tests/examples/gl/qt/qglwidgetvideooverlay/pipeline.cpp
++++ b/tests/examples/gl/qt/qglwidgetvideooverlay/pipeline.cpp
+@@ -20,7 +20,6 @@
+ 
+ #include <gst/video/videooverlay.h>
+ #include <gst/video/video.h>
+-#include <GL/gl.h>
+ #include "../gl-compat-defines.h"
+ #include "pipeline.h"
+ 
+diff --git a/tests/examples/gl/qt/qglwtextureshare/meson.build b/tests/examples/gl/qt/qglwtextureshare/meson.build
+index 9de84f6..88eab1e 100644
+--- a/tests/examples/gl/qt/qglwtextureshare/meson.build
++++ b/tests/examples/gl/qt/qglwtextureshare/meson.build
+@@ -5,6 +5,10 @@ sources = [
+   'qglrenderer.cpp',
+ ]
+ 
++if host_system == 'darwin'
++  sources += ['cocoa_utils.mm']
++endif
++
+ moc_headers = [
+   'gstthread.h',
+   'pipeline.h',
+diff --git a/tests/examples/gl/qt/qglwtextureshare/qglrenderer.cpp b/tests/examples/gl/qt/qglwtextureshare/qglrenderer.cpp
+index 814fcbd..d3dbdbc 100644
+--- a/tests/examples/gl/qt/qglwtextureshare/qglrenderer.cpp
++++ b/tests/examples/gl/qt/qglwtextureshare/qglrenderer.cpp
+@@ -39,7 +39,7 @@
+ #include "qglrenderer.h"
+ #include "pipeline.h"
+ 
+-#if defined(Q_WS_MAC)
++#if GST_GL_HAVE_PLATFORM_CGL
+ extern void *qt_current_nsopengl_context ();
+ #endif
+ 
