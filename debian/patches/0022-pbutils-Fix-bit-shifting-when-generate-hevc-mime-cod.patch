@@ -1,0 +1,27 @@
+From: Jaehoon Lee <jaehoon85.lee@lge.com>
+Date: Mon, 17 Nov 2025 15:40:05 +0900
+Subject: pbutils: Fix bit shifting when generate hevc mime codec string
+
+According to the HEVCDecoderConfigurationRecord configuration,
+profile_space and tier_flag should be corrected.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/10187>
+---
+ gst-libs/gst/pbutils/codec-utils.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/gst-libs/gst/pbutils/codec-utils.c b/gst-libs/gst/pbutils/codec-utils.c
+index 71d9180..bd64cac 100644
+--- a/gst-libs/gst/pbutils/codec-utils.c
++++ b/gst-libs/gst/pbutils/codec-utils.c
+@@ -2414,8 +2414,8 @@ hevc_caps_get_mime_codec (GstCaps * caps, gchar ** mime_codec)
+   }
+ 
+   profile_tier_level = data + 1;
+-  profile_space = (profile_tier_level[0] & 0x11) >> 6;
+-  tier_flag = (profile_tier_level[0] & 0x001) >> 5;
++  profile_space = (profile_tier_level[0] >> 6) & 0x03;
++  tier_flag = (profile_tier_level[0] >> 5) & 0x01;
+   profile_idc = (profile_tier_level[0] & 0x1f);
+ 
+   compat_flags = GST_READ_UINT32_BE (data + 2);

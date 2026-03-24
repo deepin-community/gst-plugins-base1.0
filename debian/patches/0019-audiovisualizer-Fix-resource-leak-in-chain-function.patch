@@ -1,0 +1,41 @@
+From: Jaehoon Lee <jaehoon85.lee@lge.com>
+Date: Thu, 20 Nov 2025 14:46:33 +0900
+Subject: audiovisualizer: Fix resource leak in chain function
+
+The input buffer should be unreferenced when
+a negotiation failure is detected in the chain function.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/10188>
+---
+ gst-libs/gst/pbutils/gstaudiovisualizer.c | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/gst-libs/gst/pbutils/gstaudiovisualizer.c b/gst-libs/gst/pbutils/gstaudiovisualizer.c
+index 562dd79..9872623 100644
+--- a/gst-libs/gst/pbutils/gstaudiovisualizer.c
++++ b/gst-libs/gst/pbutils/gstaudiovisualizer.c
+@@ -1077,8 +1077,7 @@ gst_audio_visualizer_chain (GstPad * pad, GstObject * parent,
+   bpf = GST_AUDIO_INFO_BPF (&scope->ainfo);
+ 
+   if (bpf == 0) {
+-    ret = GST_FLOW_NOT_NEGOTIATED;
+-    goto beach;
++    goto not_negotiated;
+   }
+ 
+   gst_adapter_push (scope->priv->adapter, buffer);
+@@ -1229,13 +1228,13 @@ gst_audio_visualizer_chain (GstPad * pad, GstObject * parent,
+ 
+   g_mutex_unlock (&scope->priv->config_lock);
+ 
+-beach:
+   return ret;
+ 
+   /* ERRORS */
+ not_negotiated:
+   {
+     GST_DEBUG_OBJECT (scope, "Failed to renegotiate");
++    gst_buffer_unref (buffer);
+     return GST_FLOW_NOT_NEGOTIATED;
+   }
+ }

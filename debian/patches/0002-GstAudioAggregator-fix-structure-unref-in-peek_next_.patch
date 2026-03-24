@@ -1,0 +1,25 @@
+From: =?utf-8?q?Lo=C3=AFc_Le_Page?= <llepage@igalia.com>
+Date: Wed, 18 Jun 2025 19:03:17 +0200
+Subject: GstAudioAggregator: fix structure unref in peek_next_sample
+
+The GstStructure attached to the audio sample in peek_next_sample() was
+freed prematurely before usage as gst_sample_new() is taking full
+ownership on it.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/9387>
+---
+ gst-libs/gst/audio/gstaudioaggregator.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/gst-libs/gst/audio/gstaudioaggregator.c b/gst-libs/gst/audio/gstaudioaggregator.c
+index fe28153..017efd1 100644
+--- a/gst-libs/gst/audio/gstaudioaggregator.c
++++ b/gst-libs/gst/audio/gstaudioaggregator.c
+@@ -2170,7 +2170,6 @@ gst_audio_aggregator_peek_next_sample (GstAggregator * agg,
+ 
+     sample = gst_sample_new (pad->priv->buffer, caps, &aggpad->segment, info);
+     gst_caps_unref (caps);
+-    gst_structure_free (info);
+   }
+ 
+   return sample;

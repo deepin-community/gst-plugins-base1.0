@@ -1,0 +1,26 @@
+From: Jaehoon Lee <jaehoon85.lee@lge.com>
+Date: Tue, 18 Nov 2025 15:17:05 +0900
+Subject: uridecodebin3: Add null check of play items in purge
+
+Add null check for play items in purge_play_items
+to ensure that play_item is not null.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/10139>
+---
+ gst/playback/gsturidecodebin3.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/gst/playback/gsturidecodebin3.c b/gst/playback/gsturidecodebin3.c
+index daa7d1f..e5651bf 100644
+--- a/gst/playback/gsturidecodebin3.c
++++ b/gst/playback/gsturidecodebin3.c
+@@ -2039,7 +2039,8 @@ purge_play_items (GstURIDecodeBin3 * dec)
+     free_play_item (dec, item);
+   }
+ 
+-  dec->output_item = dec->input_item = dec->play_items->data;
++  dec->output_item = dec->input_item =
++      (dec->play_items ? dec->play_items->data : NULL);
+   dec->output_item->posted_about_to_finish = FALSE;
+   PLAY_ITEMS_UNLOCK (dec);
+ }

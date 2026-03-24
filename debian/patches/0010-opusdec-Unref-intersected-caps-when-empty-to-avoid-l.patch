@@ -1,0 +1,34 @@
+From: Mazdak Farzone <mazdak@axis.com>
+Date: Thu, 6 Nov 2025 09:30:13 +0100
+Subject: opusdec: Unref intersected caps when empty to avoid leaks
+
+Add gst_caps_unref(tmp) in the else branch of both the 'channels' and 'rate'
+preference blocks to correctly release the empty intersection.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/10032>
+---
+ ext/opus/gstopusdec.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/ext/opus/gstopusdec.c b/ext/opus/gstopusdec.c
+index d3f461d..df6e8f4 100644
+--- a/ext/opus/gstopusdec.c
++++ b/ext/opus/gstopusdec.c
+@@ -317,6 +317,8 @@ gst_opus_dec_negotiate (GstOpusDec * dec, const GstAudioChannelPosition * pos)
+       if (!gst_caps_is_empty (tmp)) {
+         gst_caps_unref (inter);
+         inter = tmp;
++      } else {
++        gst_caps_unref (tmp);
+       }
+ 
+       gst_caps_unref (preferred);
+@@ -334,6 +336,8 @@ gst_opus_dec_negotiate (GstOpusDec * dec, const GstAudioChannelPosition * pos)
+       if (!gst_caps_is_empty (tmp)) {
+         gst_caps_unref (inter);
+         inter = tmp;
++      } else {
++        gst_caps_unref (tmp);
+       }
+ 
+       gst_caps_unref (preferred);
