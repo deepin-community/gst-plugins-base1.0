@@ -1,3 +1,45 @@
+gst-plugins-base1.0 (1.24.13-0deepin1) unstable; urgency=medium
+
+  * New upstream version 1.24.13
+    Fixes: CVE-2025-47808, CVE-2025-47807, CVE-2025-47806, CVE-2024-47835,
+           CVE-2024-47615, CVE-2024-47607, CVE-2024-47600, CVE-2024-47542,
+           CVE-2024-47541, CVE-2024-47538
+  * Apply 31 patches from upstream 1.24 branch:
+    d/patches/0001-urisourcebin-never-manually-store-stream-start.patch
+    d/patches/0002-GstAudioAggregator-fix-structure-unref-in-peek_next_.patch
+    d/patches/0003-rtpbasedepayload-Avoid-potential-use-after-free.patch
+    d/patches/0004-sdp-proper-usage-of-gst_buffer_append.patch
+    d/patches/0005-qt-Fix-building-examples-on-macOS.patch
+    d/patches/0006-gltestsrc-Fix-memory-leaks-on-shader-creation-failur.patch
+    d/patches/0007-rtsp-fix-memory-leaks-in-gst_rtsp_connection_connect.patch
+    d/patches/0008-id3-fix-csets-memory-leak-in-string_utf8_dup.patch
+    d/patches/0009-encoding-target-Fix-memory-leak-in-gst_encoding_targ.patch
+    d/patches/0010-opusdec-Unref-intersected-caps-when-empty-to-avoid-l.patch
+    d/patches/0011-glcolorconvert-Fix-memory-leak-in-_create_shader.patch
+    d/patches/0012-urisourcebin-Fix-initial-values-of-min_byte_level-an.patch
+    d/patches/0013-glfiltershader-Add-missing-unlock.patch
+    d/patches/0014-uridecodebin3-Add-null-check-of-play-items-in-purge.patch
+    d/patches/0015-glbasesrc-Add-unlock-handling-for-non-negotiated-cas.patch
+    d/patches/0016-glstereosplit-Add-missing-unlock-for-exceptional-cas.patch
+    d/patches/0017-gst-play-Add-missing-unlock-for-invalid-track-type.patch
+    d/patches/0018-audiovisualizer-Use-break-instead-of-goto-for-escape.patch
+    d/patches/0019-audiovisualizer-Fix-resource-leak-in-chain-function.patch
+    d/patches/0020-audiovisualizer-Change-buffer-access-to-go-through-a.patch
+    d/patches/0021-audiovisualizer-Remove-unnecessary-unmap-call-for-ad.patch
+    d/patches/0022-pbutils-Fix-bit-shifting-when-generate-hevc-mime-cod.patch
+    d/patches/0023-pbutils-Add-a-test-case-for-another-profile-tier-lev.patch
+    d/patches/0024-typefindfunctions-Insert-assertion-to-catch-unreacha.patch
+    d/patches/0025-rtpbasedepayload-Add-missing-unlocks.patch
+    d/patches/0026-urisourcebin-Add-missing-unlock.patch
+    d/patches/0027-opusenc-Simplify-Vorbis-channel-layout-mapping-code-.patch
+    d/patches/0028-opusdec-Only-call-into-the-channel-reordering-functi.patch
+    d/patches/0029-opusenc-Use-the-surround-multistream-encoder-for-the.patch
+    d/patches/0030-glwindow_cocoa-fix-window-not-closing-w-o-user-windo.patch
+    d/patches/0031-riff-Correctly-check-that-enough-RGB-palette-data-is.patch
+    Fixes: GST-SA-2026-0004, ZDI-CAN-28854, CVE-2026-2921
+
+ -- Tianyu Chen <sweetyfish@deepin.org>  Tue, 24 Mar 2026 15:45:15 +0800
+
 gst-plugins-base1.0 (1.24.6-1) unstable; urgency=medium
 
   * New upstream version 1.24.6
