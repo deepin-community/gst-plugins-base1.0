@@ -1,3 +1,9 @@
+gst-plugins-base1.0 (1.24.6-1deepin1) unstable; urgency=high
+
+  * Fix CVE-2026-2921: RIFF palette integer overflow vulnerability
+
+ -- lichenggang <lichenggang@uniontech.com>  Tue, 24 Mar 2026 14:29:16 +0800
+
 gst-plugins-base1.0 (1.24.6-1) unstable; urgency=medium
 
   * New upstream version 1.24.6
