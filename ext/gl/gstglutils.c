@@ -107,16 +107,18 @@ gst_gl_context_gen_shader (GstGLContext * context, const gchar * vert_src,
   return *shader != NULL;
 }
 
+/* Populated in the plugin init function */
+GQuark _gst_gl_tags_quark;
+
 /* This is public API in 1.28 */
 gboolean
 gst_gl_gst_meta_api_type_tags_contain_only (GType api,
     const gchar ** valid_tags)
 {
   const gchar **tags, **curr;
-
   g_return_val_if_fail (api != 0, FALSE);
 
-  tags = (const gchar **) gst_meta_api_type_get_tags (api);
+  tags = g_type_get_qdata (api, _gst_gl_tags_quark);
 
   if (!tags)
     return TRUE;

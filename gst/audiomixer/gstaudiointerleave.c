@@ -104,16 +104,6 @@ enum
 
 /* elementfactory information */
 
-#if G_BYTE_ORDER == G_LITTLE_ENDIAN
-#define CAPS \
-  GST_AUDIO_CAPS_MAKE ("{ S32LE, U32LE, S16LE, U16LE, S8, U8, F32LE, F64LE }") \
-  ", layout = (string) { interleaved, non-interleaved }"
-#else
-#define CAPS \
-  GST_AUDIO_CAPS_MAKE ("{ S32BE, U32BE, S16BE, U16BE, S8, U8, F32BE, F64BE }") \
-  ", layout = (string) { interleaved, non-interleaved }"
-#endif
-
 static GstStaticPadTemplate gst_audio_interleave_sink_template =
 GST_STATIC_PAD_TEMPLATE ("sink_%u",
     GST_PAD_SINK,
@@ -189,9 +179,10 @@ __set_channels (GstCaps * caps, gint channels)
   for (i = 0; i < size; i++) {
     s = gst_caps_get_structure (caps, i);
     if (channels > 0)
-      gst_structure_set (s, "channels", G_TYPE_INT, channels, NULL);
+      gst_structure_set_static_str (s, "channels", G_TYPE_INT, channels, NULL);
     else
-      gst_structure_set (s, "channels", GST_TYPE_INT_RANGE, 1, G_MAXINT, NULL);
+      gst_structure_set_static_str (s, "channels", GST_TYPE_INT_RANGE, 1,
+          G_MAXINT, NULL);
   }
 }
 
@@ -524,8 +515,8 @@ gst_audio_interleave_update_src_caps (GstAggregator * agg, GstCaps * caps,
   *ret = gst_caps_copy (self->sinkcaps);
   s = gst_caps_get_structure (*ret, 0);
 
-  gst_structure_set (s, "channels", G_TYPE_INT, self->channels, "layout",
-      G_TYPE_STRING, "interleaved", "channel-mask", GST_TYPE_BITMASK,
+  gst_structure_set_static_str (s, "channels", G_TYPE_INT, self->channels,
+      "layout", G_TYPE_STRING, "interleaved", "channel-mask", GST_TYPE_BITMASK,
       gst_audio_interleave_get_channel_mask (self), NULL);
 
   GST_OBJECT_UNLOCK (self);

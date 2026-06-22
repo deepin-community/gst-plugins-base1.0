@@ -500,6 +500,8 @@ gst_gl_video_mixer_input_dispose (GObject * object)
   GstGLVideoMixerInput *self = (GstGLVideoMixerInput *) object;
 
   gst_clear_object (&self->mixer_pad);
+
+  G_OBJECT_CLASS (gst_gl_video_mixer_input_parent_class)->dispose (object);
 }
 
 static GstGhostPad *
@@ -570,6 +572,8 @@ static void
 gst_gl_video_mixer_bin_constructed (GObject * self)
 {
   GstGLMixerBin *mix_bin = GST_GL_MIXER_BIN (self);
+
+  G_OBJECT_CLASS (gst_gl_video_mixer_bin_parent_class)->constructed (self);
 
   gst_gl_mixer_bin_finish_init_with_element (mix_bin,
       g_object_new (GST_TYPE_GL_VIDEO_MIXER,
@@ -1722,23 +1726,25 @@ src_pad_mouse_event (GstElement * element, GstPad * pad, gpointer user_data)
 {
   GstGLVideoMixer *mix = GST_GL_VIDEO_MIXER (element);
   GstGLVideoMixerPad *mix_pad = GST_GL_VIDEO_MIXER_PAD (pad);
-  GstCaps *caps = gst_pad_get_current_caps (pad);
-  GstStructure *event_st, *caps_st;
-  gint par_n = 1, par_d = 1;
+  GstVideoAggregatorPad *vagg_pad = GST_VIDEO_AGGREGATOR_PAD (mix_pad);
+  GstStructure *event_st;
   gdouble event_x, event_y;
   GstVideoRectangle rect;
 
+  if (!vagg_pad->info.finfo
+      || vagg_pad->info.finfo->format == GST_VIDEO_FORMAT_UNKNOWN) {
+    GST_DEBUG_OBJECT (mix_pad, "Have no caps yet");
+    return TRUE;
+  }
+
   event_st =
       gst_structure_copy (gst_event_get_structure (GST_EVENT_CAST (user_data)));
-  caps_st = gst_structure_copy (gst_caps_get_structure (caps, 0));
-
   gst_structure_get (event_st, "pointer_x", G_TYPE_DOUBLE, &event_x,
       "pointer_y", G_TYPE_DOUBLE, &event_y, NULL);
 
   /* Find output rectangle of this pad */
-  gst_structure_get_fraction (caps_st, "pixel-aspect-ratio", &par_n, &par_d);
-  _mixer_pad_get_output_size (mix, mix_pad, par_n, par_d, &(rect.w), &(rect.h),
-      &(rect.x), &(rect.y));
+  _mixer_pad_get_output_size (mix, mix_pad, vagg_pad->info.par_n,
+      vagg_pad->info.par_d, &(rect.w), &(rect.h), &(rect.x), &(rect.y));
   rect.x += mix_pad->xpos;
   rect.y += mix_pad->ypos;
 
@@ -1759,7 +1765,6 @@ src_pad_mouse_event (GstElement * element, GstPad * pad, gpointer user_data)
     gst_structure_free (event_st);
   }
 
-  gst_structure_free (caps_st);
   return TRUE;
 }
 
