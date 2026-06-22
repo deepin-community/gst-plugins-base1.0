@@ -217,7 +217,6 @@ struct _GstURIDecodeBin3
   GstBin parent_instance;
 
   /* Properties */
-  GstElement *source;
   guint64 connection_speed;     /* In bits/sec (0 = unknown) */
   GstCaps *caps;
   guint64 buffer_duration;      /* When buffering, buffer duration (ns) */
@@ -309,7 +308,6 @@ enum
   PROP_CURRENT_URI,
   PROP_SUBURI,
   PROP_CURRENT_SUBURI,
-  PROP_SOURCE,
   PROP_CONNECTION_SPEED,
   PROP_BUFFER_SIZE,
   PROP_BUFFER_DURATION,
@@ -440,10 +438,6 @@ gst_uri_decode_bin3_class_init (GstURIDecodeBin3Class * klass)
       g_param_spec_string ("current-suburi", "Current .sub-URI",
           "The currently playing URI of a subtitle",
           NULL, G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
-
-  g_object_class_install_property (gobject_class, PROP_SOURCE,
-      g_param_spec_object ("source", "Source", "Source object used",
-          GST_TYPE_ELEMENT, G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property (gobject_class, PROP_CONNECTION_SPEED,
       g_param_spec_uint64 ("connection-speed", "Connection Speed",
@@ -1134,8 +1128,12 @@ switch_and_activate_input_locked (GstURIDecodeBin3 * uridecodebin,
     GstSourcePad *old_spad = iterold->data;
     if (old_spad->db3_sink_pad) {
       GST_DEBUG_OBJECT (uridecodebin, "Releasing no longer used db3 pad");
+      /* Temporarily release play items lock to avoid deadlock if releasing the
+       * pad causes a message that calls back into our message handler. */
+      PLAY_ITEMS_UNLOCK (uridecodebin);
       gst_element_release_request_pad (uridecodebin->decodebin,
           old_spad->db3_sink_pad);
+      PLAY_ITEMS_LOCK (uridecodebin);
       old_spad->db3_sink_pad = NULL;
     }
   }
@@ -1592,6 +1590,7 @@ gst_uri_decode_bin3_set_property (GObject * object, guint prop_id,
       dec->download = g_value_get_boolean (value);
       break;
     case PROP_DOWNLOAD_DIR:
+      g_free (dec->download_dir);
       dec->download_dir = g_value_dup_string (value);
       break;
     case PROP_USE_BUFFERING:
@@ -1661,13 +1660,6 @@ gst_uri_decode_bin3_get_property (GObject * object, guint prop_id,
       } else {
         g_value_set_string (value, NULL);
       }
-      break;
-    }
-    case PROP_SOURCE:
-    {
-      GST_OBJECT_LOCK (dec);
-      g_value_set_object (value, dec->source);
-      GST_OBJECT_UNLOCK (dec);
       break;
     }
     case PROP_CONNECTION_SPEED:
@@ -2179,6 +2171,37 @@ beach:
   return message;
 }
 
+static GstMessage *
+update_message_with_uri (GstURIDecodeBin3 * uridecodebin, GstMessage * msg)
+{
+  gchar *uri = NULL;
+  gboolean unlock_after = FALSE;
+  if (gst_object_has_as_ancestor (GST_MESSAGE_SRC (msg),
+          (GstObject *) uridecodebin->decodebin)) {
+    uri = uridecodebin->output_item->main_item->uri;
+  } else {
+    GstSourceHandler *handler;
+    PLAY_ITEMS_LOCK (uridecodebin);
+    unlock_after = TRUE;
+    /* Find the matching handler (if any) */
+    if ((handler = find_source_handler_for_element (uridecodebin, msg->src))) {
+      uri = handler->play_item->main_item->uri;
+    }
+  }
+
+  if (uri) {
+    GstStructure *details;
+    msg = gst_message_make_writable (msg);
+    details = gst_message_writable_details (msg);
+    gst_structure_set (details, "uri", G_TYPE_STRING, uri, NULL);
+  }
+
+  if (unlock_after)
+    PLAY_ITEMS_UNLOCK (uridecodebin);
+
+  return msg;
+}
+
 static void
 gst_uri_decode_bin3_handle_message (GstBin * bin, GstMessage * msg)
 {
@@ -2266,8 +2289,14 @@ gst_uri_decode_bin3_handle_message (GstBin * bin, GstMessage * msg)
       if (details && gst_structure_has_field (details, "redirect-location"))
         msg =
             gst_uri_decode_bin3_handle_redirection (uridecodebin, msg, details);
+      if (msg)
+        msg = update_message_with_uri (uridecodebin, msg);
       break;
     }
+    case GST_MESSAGE_WARNING:
+    case GST_MESSAGE_INFO:
+      msg = update_message_with_uri (uridecodebin, msg);
+      break;
     default:
       break;
   }

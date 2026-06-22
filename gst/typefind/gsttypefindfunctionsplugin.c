@@ -126,6 +126,7 @@ plugin_init (GstPlugin * plugin)
   GST_TYPE_FIND_REGISTER (h263_video, plugin);
   GST_TYPE_FIND_REGISTER (h264_video, plugin);
   GST_TYPE_FIND_REGISTER (h265_video, plugin);
+  GST_TYPE_FIND_REGISTER (h266_video, plugin);
   GST_TYPE_FIND_REGISTER (nuv, plugin);
   /* ISO formats */
   GST_TYPE_FIND_REGISTER (m4a, plugin);
@@ -213,6 +214,7 @@ plugin_init (GstPlugin * plugin)
   GST_TYPE_FIND_REGISTER (film_cpk, plugin);
   GST_TYPE_FIND_REGISTER (gxf, plugin);
   GST_TYPE_FIND_REGISTER (iff, plugin);
+  GST_TYPE_FIND_REGISTER (av1, plugin);
 
   return TRUE;
 }
