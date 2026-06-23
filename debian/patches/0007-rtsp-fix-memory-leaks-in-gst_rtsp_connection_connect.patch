@@ -1,0 +1,53 @@
+From: Jeehyun Lee <jeehyun.lee@lge.com>
+Date: Fri, 31 Oct 2025 15:54:36 +0900
+Subject: rtsp: fix memory leaks in
+ gst_rtsp_connection_connect_with_response_usec
+
+Fix request_uri memory leaks in connection retry loop and properly
+handle connection_uri ownership transfer during redirects.
+
+- Initialize request_uri to NULL
+- Free request_uri at start of each loop iteration
+- Transfer ownership correctly during redirect handling
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/9999>
+---
+ gst-libs/gst/rtsp/gstrtspconnection.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/gst-libs/gst/rtsp/gstrtspconnection.c b/gst-libs/gst/rtsp/gstrtspconnection.c
+index 40ca87a..7119b10 100644
+--- a/gst-libs/gst/rtsp/gstrtspconnection.c
++++ b/gst-libs/gst/rtsp/gstrtspconnection.c
+@@ -1155,7 +1155,8 @@ gst_rtsp_connection_connect_with_response_usec (GstRTSPConnection * conn,
+   GSocketConnection *connection;
+   GSocket *socket;
+   GError *error = NULL;
+-  gchar *connection_uri, *request_uri, *remote_ip, *query = NULL, *path = NULL;
++  gchar *connection_uri, *request_uri = NULL, *remote_ip, *query = NULL, *path =
++      NULL;
+   GstClockTime to;
+   guint16 url_port;
+   GstRTSPUrl *url;
+@@ -1184,6 +1185,9 @@ gst_rtsp_connection_connect_with_response_usec (GstRTSPConnection * conn,
+   while (res == GST_RTSP_OK) {
+     cancellable = get_cancellable (conn);
+ 
++    g_free (request_uri);
++    request_uri = NULL;
++
+     if (conn->proxy_host) {
+       connection = g_socket_client_connect_to_host (conn->client,
+           conn->proxy_host, conn->proxy_port, cancellable, &error);
+@@ -1248,7 +1252,11 @@ gst_rtsp_connection_connect_with_response_usec (GstRTSPConnection * conn,
+           GST_LOG ("redirect from %s to %s.", connection_uri, request_uri);
+ 
+           stream0_reset (conn);
++
++          g_free (connection_uri);
+           connection_uri = request_uri;
++          request_uri = NULL;
++
+           gst_uri_unref (uri);
+ 
+           uri = gst_uri_from_string (connection_uri);

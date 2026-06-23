@@ -1,0 +1,78 @@
+From: =?utf-8?q?Sebastian_Dr=C3=B6ge?= <sebastian@centricular.com>
+Date: Sat, 13 Dec 2025 17:00:33 +0200
+Subject: opusenc: Use the surround multistream encoder for the Vorbis channel
+ mapping family
+
+It provides additional surround features. For all other channel mapping families,
+continue using the normal multistream encoder as it allows to provide the
+channel configuration values.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/10455>
+---
+ ext/opus/gstopusenc.c | 32 +++++++++++++++++++++++++++-----
+ ext/opus/meson.build  |  7 ++++++-
+ 2 files changed, 33 insertions(+), 6 deletions(-)
+
+diff --git a/ext/opus/gstopusenc.c b/ext/opus/gstopusenc.c
+index 7eb3c16..554974e 100644
+--- a/ext/opus/gstopusenc.c
++++ b/ext/opus/gstopusenc.c
+@@ -676,11 +676,33 @@ gst_opus_enc_setup (GstOpusEnc * enc)
+       "Mapping table", enc->n_channels, enc->channel_mapping);
+ #endif
+ 
+-  enc->state = opus_multistream_encoder_create (enc->sample_rate,
+-      enc->n_channels, enc->n_channels - enc->n_stereo_streams,
+-      enc->n_stereo_streams, enc->channel_mapping, enc->audio_type, &error);
+-  if (!enc->state || error != OPUS_OK)
+-    goto encoder_creation_failed;
++#ifdef HAVE_LIBOPUS_1_1
++  if (enc->channel_mapping_family == 1) {
++    int streams, coupled_streams;
++    guint8 mapping[8];
++
++    enc->state = opus_multistream_surround_encoder_create (enc->sample_rate,
++        enc->n_channels, enc->channel_mapping_family,
++        &streams, &coupled_streams, mapping, enc->audio_type, &error);
++
++    if (!enc->state || error != OPUS_OK)
++      goto encoder_creation_failed;
++
++    /* We set all these values according to the Vorbis channel mapping family
++     * so this should really never fail */
++    if (streams != enc->n_channels - enc->n_stereo_streams ||
++        coupled_streams != enc->n_stereo_streams ||
++        memcmp (mapping, enc->channel_mapping, enc->n_channels) != 0)
++      goto encoder_creation_failed;
++  } else
++#endif
++  {
++    enc->state = opus_multistream_encoder_create (enc->sample_rate,
++        enc->n_channels, enc->n_channels - enc->n_stereo_streams,
++        enc->n_stereo_streams, enc->channel_mapping, enc->audio_type, &error);
++    if (!enc->state || error != OPUS_OK)
++      goto encoder_creation_failed;
++  }
+ 
+   opus_multistream_encoder_ctl (enc->state, OPUS_SET_BITRATE (enc->bitrate), 0);
+   opus_multistream_encoder_ctl (enc->state, OPUS_SET_BANDWIDTH (enc->bandwidth),
+diff --git a/ext/opus/meson.build b/ext/opus/meson.build
+index b065d6a..f80dfd9 100644
+--- a/ext/opus/meson.build
++++ b/ext/opus/meson.build
+@@ -11,9 +11,14 @@ opus_dep = dependency('opus', version: '>= 0.9.4', required: get_option('opus'),
+                       fallback: ['opus', 'opus_dep'], default_options: ['docs=disabled'])
+ 
+ if opus_dep.found()
++  opus_defines = []
++  if opus_dep.version().version_compare('>=1.1')
++    opus_defines += ['-DHAVE_LIBOPUS_1_1']
++  endif
++
+   gstopus = library('gstopus',
+     opus_sources,
+-    c_args : gst_plugins_base_args,
++    c_args : gst_plugins_base_args + opus_defines,
+     link_args : noseh_link_args,
+     include_directories: [configinc, libsinc],
+     dependencies : [pbutils_dep, tag_dep, audio_dep, gst_dep, gst_base_dep, opus_dep, libm],

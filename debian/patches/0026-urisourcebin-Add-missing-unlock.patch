@@ -1,0 +1,24 @@
+From: Jaehoon Lee <jaehoon85.lee@lge.com>
+Date: Wed, 19 Nov 2025 14:26:13 +0900
+Subject: urisourcebin: Add missing unlock
+
+The lock of urisourcebin should be released
+when the creation of the parsebin element fails.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/10161>
+---
+ gst/playback/gsturisourcebin.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/gst/playback/gsturisourcebin.c b/gst/playback/gsturisourcebin.c
+index 9d10868..873e4e4 100644
+--- a/gst/playback/gsturisourcebin.c
++++ b/gst/playback/gsturisourcebin.c
+@@ -2133,6 +2133,7 @@ setup_parsebin_for_slot (ChildSrcPadInfo * info, GstPad * originating_pad)
+ 
+   info->demuxer = gst_element_factory_make ("parsebin", NULL);
+   if (!info->demuxer) {
++    GST_URI_SOURCE_BIN_UNLOCK (urisrc);
+     post_missing_plugin_error (GST_ELEMENT_CAST (urisrc), "parsebin");
+     return FALSE;
+   }

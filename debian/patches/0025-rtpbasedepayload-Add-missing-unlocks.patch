@@ -1,0 +1,23 @@
+From: Jaehoon Lee <jaehoon85.lee@lge.com>
+Date: Wed, 19 Nov 2025 14:18:32 +0900
+Subject: rtpbasedepayload: Add missing unlocks
+
+Add missing unlocks when retrieving information from the RTP header.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/10160>
+---
+ gst-libs/gst/rtp/gstrtpbasedepayload.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/gst-libs/gst/rtp/gstrtpbasedepayload.c b/gst-libs/gst/rtp/gstrtpbasedepayload.c
+index 3519694..41b2f9a 100644
+--- a/gst-libs/gst/rtp/gstrtpbasedepayload.c
++++ b/gst-libs/gst/rtp/gstrtpbasedepayload.c
+@@ -1407,6 +1407,7 @@ read_rtp_header_extensions (GstRTPBaseDepayload * depayload,
+           GST_WARNING_OBJECT (depayload, "RTP header extension (%s) could "
+               "not read payloaded data", GST_OBJECT_NAME (ext));
+           gst_object_unref (ext);
++          GST_OBJECT_UNLOCK (depayload);
+           goto out;
+         }
+ 
