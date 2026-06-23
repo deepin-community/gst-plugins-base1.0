@@ -1,0 +1,24 @@
+From: Jeehyun Lee <jeehyun.lee@lge.com>
+Date: Wed, 5 Nov 2025 10:04:36 +0900
+Subject: id3: fix csets memory leak in string_utf8_dup
+
+Free csets array when charset conversion loop completes without
+finding a valid conversion to prevent memory leak.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/10017>
+---
+ gst-libs/gst/tag/id3v2frames.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/gst-libs/gst/tag/id3v2frames.c b/gst-libs/gst/tag/id3v2frames.c
+index f39659b..4b55fa1 100644
+--- a/gst-libs/gst/tag/id3v2frames.c
++++ b/gst-libs/gst/tag/id3v2frames.c
+@@ -1051,6 +1051,7 @@ string_utf8_dup (const gchar * start, const guint size)
+         utf8 = NULL;
+       }
+     }
++    g_strfreev (csets);
+   }
+   /* Try current locale (if not UTF-8) */
+   if (!g_get_charset (&env)) {

@@ -1,0 +1,34 @@
+From: Jeehyun Lee <jeehyun.lee@lge.com>
+Date: Fri, 31 Oct 2025 14:33:11 +0900
+Subject: gltestsrc: Fix memory leaks on shader creation failure
+
+Free coord and plane_indices when color_shader or snow_shader
+compilation fails to prevent memory leaks in error paths.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/9998>
+---
+ ext/gl/gltestsrc.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/ext/gl/gltestsrc.c b/ext/gl/gltestsrc.c
+index d353166..7b19a48 100644
+--- a/ext/gl/gltestsrc.c
++++ b/ext/gl/gltestsrc.c
+@@ -462,6 +462,8 @@ _src_smpte_init (gpointer impl, GstGLContext * context,
+           frags), NULL);
+   if (!src->color_shader) {
+     GST_ERROR_OBJECT (src->base.base.src, "%s", error->message);
++    g_free (coord);
++    g_free (plane_indices);
+     return FALSE;
+   }
+ 
+@@ -480,6 +482,8 @@ _src_smpte_init (gpointer impl, GstGLContext * context,
+           frags), NULL);
+   if (!src->snow_shader) {
+     GST_ERROR_OBJECT (src->base.base.src, "%s", error->message);
++    g_free (coord);
++    g_free (plane_indices);
+     return FALSE;
+   }
+ 

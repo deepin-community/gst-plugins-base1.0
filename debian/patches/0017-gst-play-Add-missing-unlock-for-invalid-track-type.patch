@@ -1,0 +1,25 @@
+From: Jaehoon Lee <jaehoon85.lee@lge.com>
+Date: Wed, 19 Nov 2025 14:06:56 +0900
+Subject: gst-play: Add missing unlock for invalid track type
+
+Add missing unlock in play_cycle_track_selection
+of gst-play. The unlock should be added when
+the function ends in an exceptional case.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/10144>
+---
+ tools/gst-play.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tools/gst-play.c b/tools/gst-play.c
+index f492f52..9b21f3c 100644
+--- a/tools/gst-play.c
++++ b/tools/gst-play.c
+@@ -1289,6 +1289,7 @@ play_cycle_track_selection (GstPlay * play, GstPlayTrackType track_type,
+       }
+       break;
+     default:
++      g_mutex_unlock (&play->selection_lock);
+       return;
+   }
+ 
