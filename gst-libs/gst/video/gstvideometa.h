@@ -72,12 +72,8 @@ typedef struct _GstVideoCropMeta GstVideoCropMeta;
  * - padding-bottom (uint): extra pixels on the bottom
  * - padding-left (uint): extra pixels on the left side
  * - padding-right (uint): extra pixels on the right side
- * - stride-align0 (uint): stride align requirements for plane 0
- * - stride-align1 (uint): stride align requirements for plane 1
- * - stride-align2 (uint): stride align requirements for plane 2
- * - stride-align3 (uint): stride align requirements for plane 3
- * The padding and stride-align fields have the same semantic as #GstVideoMeta.alignment
- * and so represent the paddings and stride-align requested on produced video buffers.
+ * The padding fields have the same semantic as #GstVideoMeta.alignment
+ * and so represent the paddings requested on produced video buffers.
  *
  * Since 1.24 it can be serialized using gst_meta_serialize() and
  * gst_meta_deserialize().

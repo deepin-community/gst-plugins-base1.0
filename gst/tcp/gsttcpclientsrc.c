@@ -566,8 +566,7 @@ gst_tcp_client_src_get_stats (GstTCPClientSrc * src)
   s = gst_structure_new ("GstTCPClientSrcStats",
       "bytes-received", G_TYPE_UINT64, src->bytes_received, NULL);
 
-  if (src->socket != NULL)
-    gst_tcp_stats_from_socket (s, src->socket);
+  gst_tcp_stats_from_socket (s, src->socket);
 
   return s;
 }

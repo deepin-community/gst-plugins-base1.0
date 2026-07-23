@@ -1,0 +1,32 @@
+From: "F. Duncanh" <fduncanh@gmail.com>
+Date: Wed, 21 May 2025 13:04:07 -0400
+Subject: glwindow_cocoa: fix window not closing (w/o user window handle)
+
+A user-supplied window handle (external_view) becomes the superView
+of internal_view, which is closed with [view removeFromSuperview].
+This fails silently if external_view = NULL (no handle supplied).
+Call [win_internal_id close] in this case. Fixes #4432.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/10454>
+---
+ gst-libs/gst/gl/cocoa/gstglwindow_cocoa.m | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/gst-libs/gst/gl/cocoa/gstglwindow_cocoa.m b/gst-libs/gst/gl/cocoa/gstglwindow_cocoa.m
+index 10b4b03..90788ef 100644
+--- a/gst-libs/gst/gl/cocoa/gstglwindow_cocoa.m
++++ b/gst-libs/gst/gl/cocoa/gstglwindow_cocoa.m
+@@ -257,6 +257,13 @@ _close_window (gpointer * data)
+ 
+   [view removeFromSuperview];
+ 
++  if (!window_cocoa->priv->external_view) {
++    GstGLNSWindow *internal_win_id =
++        (__bridge GstGLNSWindow *) window_cocoa->priv->internal_win_id;
++
++    [internal_win_id close];
++  }
++
+   CFBridgingRelease (window_cocoa->priv->internal_win_id);
+   CFBridgingRelease (window_cocoa->priv->internal_view);
+   window_cocoa->priv->internal_win_id = NULL;

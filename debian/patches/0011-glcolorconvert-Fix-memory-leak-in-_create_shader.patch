@@ -1,0 +1,32 @@
+From: JihoonLee <ejihoon.lee@lge.com>
+Date: Wed, 5 Nov 2025 15:20:51 +0900
+Subject: glcolorconvert: Fix memory leak in _create_shader
+
+Added missing g_string_free() call to properly free the GString buffer
+in error paths where the function returns early.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/10064>
+---
+ gst-libs/gst/gl/gstglcolorconvert.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/gst-libs/gst/gl/gstglcolorconvert.c b/gst-libs/gst/gl/gstglcolorconvert.c
+index 99a0803..dbf7dfc 100644
+--- a/gst-libs/gst/gl/gstglcolorconvert.c
++++ b/gst-libs/gst/gl/gstglcolorconvert.c
+@@ -2358,6 +2358,7 @@ _create_shader (GstGLColorConvert * convert)
+     g_free (version_str);
+     g_free (tmp);
+     gst_object_unref (ret);
++    g_string_free (str, TRUE);
+     return NULL;
+   }
+   g_free (tmp);
+@@ -2369,6 +2370,7 @@ _create_shader (GstGLColorConvert * convert)
+     g_free (version_str);
+     gst_object_unref (stage);
+     gst_object_unref (ret);
++    g_string_free (str, TRUE);
+     return NULL;
+   }
+ 

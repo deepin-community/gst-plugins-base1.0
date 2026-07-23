@@ -6,13 +6,12 @@
 # Rihards Priedītis <rprieditis@gmail.com>, 2011.
 # Rūdolfs Mazurs <rudolfs.mazurs@gmail.com>, 2014.
 # Rihards Priedītis <rprieditis@gmail.com>, 2023.
-# Rihards Priedītis <rprieditis@gmail.com>, 2024.
 msgid ""
 msgstr ""
-"Project-Id-Version: gst-plugins-base 1.24.0\n"
+"Project-Id-Version: gst-plugins-base 1.21.90\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-02-23 16:55+0000\n"
-"PO-Revision-Date: 2024-12-22 10:02+0000\n"
+"POT-Creation-Date: 2024-11-03 17:36+0000\n"
+"PO-Revision-Date: 2023-12-24 19:32+0000\n"
 "Last-Translator: Rihards Priedītis <rprieditis@gmail.com>\n"
 "Language-Team: Latvian <translation-team-lv@lists.sourceforge.net>\n"
 "Language: lv\n"
@@ -22,7 +21,7 @@ msgstr ""
 "Plural-Forms: nplurals=3; plural=(n%10==0 || (n%100>=11 && n%100<=19) ? 0 : "
 "n%10==1 && n%100!=11 ? 1 : 2);\n"
 "X-Bugs: Report translation errors to the Language-Team address.\n"
-"X-Generator: Poedit 3.5\n"
+"X-Generator: Poedit 3.4.2\n"
 
 msgid "Could not open device for playback in mono mode."
 msgstr "Nevar atvērt ierīci atskaņošanai mono režīmā."
@@ -155,15 +154,16 @@ msgstr "Šo straumes veidu vēl nevar atskaņot."
 msgid "No URI handler implemented for \"%s\"."
 msgstr "URI apstrādātājs priekš \"%s\" nav ieviests."
 
+#, fuzzy
 msgid "Source element can't be prepared"
-msgstr "Avota elementu nevar sagatavot"
+msgstr "Avota elementam nav paliktņu."
 
 msgid "Source element is invalid."
 msgstr "Avota elements ir nederīgs."
 
 #, c-format
 msgid "Failed to create download directory '%s'."
-msgstr "Neizdevās izveidot lejupielādes direktoriju '%s'."
+msgstr ""
 
 msgid "Source element has no pads."
 msgstr "Avota elementam nav paliktņu."
@@ -178,14 +178,15 @@ msgstr "Nevar ierakstīt audio pietiekami ātri"
 msgid "This CD has no audio tracks"
 msgstr "Šajā CD nav audio celiņu"
 
+#, fuzzy
 msgid "An OpenGL error occurred"
-msgstr "Radās OpenGL kļūda"
+msgstr "Radās GL kļūda"
 
 msgid "The GL API is not compatible with the current GL context"
-msgstr "GL API nav saderīgs ar pašreizējo GL kontekstu"
+msgstr ""
 
 msgid "Subclass failed to initialize."
-msgstr "Apakšklasi neizdevās inicializēt."
+msgstr ""
 
 msgid "ID3 tag"
 msgstr "ID3 birka"
@@ -499,14 +500,6 @@ msgstr "tveršanas baltā līdzsvars"
 msgid "The white balance mode set when capturing an image"
 msgstr "Lietotais baltās krāsas līdzsvara virziens attēla tveršanā"
 
-#, fuzzy
-msgid "capturing light source"
-msgstr "tveršanas avots"
-
-#, fuzzy
-msgid "The light source indicates the kind of light when capturing animage"
-msgstr "Attēla tveršanā izmantotas ainas tveršanas režīms"
-
 msgid "capturing contrast"
 msgstr "tveršanas kontrasts"
 
@@ -730,7 +723,7 @@ msgid "Start position in seconds."
 msgstr "Sākuma pozīcija sekundēs."
 
 msgid "Enable accurate seeking"
-msgstr "Iespējot precīzu meklēšanu"
+msgstr ""
 
 msgid "Playlist file containing input media files"
 msgstr "Atskaņošanas saraksta fails, kas satur ievades multivides failus"
@@ -743,10 +736,10 @@ msgid "Do not print any output (apart from errors)"
 msgstr "Nedrukāt nekādu izvades failu (izņemot kļūdas)"
 
 msgid "Use playbin3 pipeline (default)"
-msgstr "Izmantot playbin3 cauruļvadu (noklusējuma iestatījums)"
+msgstr ""
 
 msgid "Use playbin2 pipeline"
-msgstr "Izmantot playbin2 cauruļvadu"
+msgstr ""
 
 msgid ""
 "Keep showing the last frame on EOS until quit or playlist change command "
@@ -756,7 +749,7 @@ msgstr ""
 "atskaņošanas saraksta komanda (atskaņošana bez atstarpēm tiek ignorēts)"
 
 msgid "Do not print current position of pipeline"
-msgstr "Nedrukāt cauruļvada pašreizējo pozīciju"
+msgstr ""
 
 #, c-format
 msgid "Usage: %s FILE1|URI1 [FILE2|URI2] [FILE3|URI3] ..."

@@ -915,11 +915,10 @@ beach:
 }
 
 static gboolean
-_set_properties (const GstIdStr * property, const GValue * value,
-    GObject * element)
+_set_properties (GQuark property_id, const GValue * value, GObject * element)
 {
-  GST_DEBUG_OBJECT (element, "Setting %s", gst_id_str_as_str (property));
-  g_object_set_property (element, gst_id_str_as_str (property), value);
+  GST_DEBUG_OBJECT (element, "Setting %s", g_quark_to_string (property_id));
+  g_object_set_property (element, g_quark_to_string (property_id), value);
 
   return TRUE;
 }
@@ -938,8 +937,8 @@ set_element_properties_from_encoding_profile (GstEncodingProfile * profile,
     return;
 
   if (!gst_structure_has_name (properties, "element-properties-map")) {
-    gst_structure_foreach_id_str (properties,
-        (GstStructureForeachIdStrFunc) _set_properties, element);
+    gst_structure_foreach (properties,
+        (GstStructureForeachFunc) _set_properties, element);
     goto done;
   }
 
@@ -971,8 +970,8 @@ set_element_properties_from_encoding_profile (GstEncodingProfile * profile,
     GST_DEBUG_OBJECT (GST_OBJECT_PARENT (element),
         "Setting %" GST_PTR_FORMAT " on %" GST_PTR_FORMAT, tmp_properties,
         element);
-    gst_structure_foreach_id_str (tmp_properties,
-        (GstStructureForeachIdStrFunc) _set_properties, element);
+    gst_structure_foreach (tmp_properties,
+        (GstStructureForeachFunc) _set_properties, element);
     goto done;
   }
 
@@ -1133,7 +1132,7 @@ static inline GstPad *
 get_compatible_muxer_sink_pad (GstEncodeBaseBin * ebin,
     GstEncodingProfile * sprof, GstCaps * sinkcaps)
 {
-  GstPad *sinkpad = NULL;
+  GstPad *sinkpad;
   GList *padl, *compatible_templates = NULL;
 
   GST_DEBUG_OBJECT (ebin, "Finding muxer pad for caps: %" GST_PTR_FORMAT,
@@ -2062,12 +2061,10 @@ cleanup:
 }
 
 static gboolean
-_gst_caps_match_foreach (const GstIdStr * fieldname, const GValue * value,
-    gpointer data)
+_gst_caps_match_foreach (GQuark field_id, const GValue * value, gpointer data)
 {
   GstStructure *structure = data;
-  const GValue *other_value =
-      gst_structure_id_str_get_value (structure, fieldname);
+  const GValue *other_value = gst_structure_id_get_value (structure, field_id);
 
   if (G_UNLIKELY (other_value == NULL))
     return FALSE;
@@ -2093,7 +2090,7 @@ _gst_caps_match (const GstCaps * caps_a, const GstCaps * caps_b)
     for (j = 0; j < gst_caps_get_size (caps_b); j++) {
       GstStructure *structure_b = gst_caps_get_structure (caps_b, j);
 
-      res = gst_structure_foreach_id_str (structure_a, _gst_caps_match_foreach,
+      res = gst_structure_foreach (structure_a, _gst_caps_match_foreach,
           structure_b);
       if (res)
         goto end;

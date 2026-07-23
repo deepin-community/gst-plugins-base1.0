@@ -39,8 +39,11 @@
  * get_peer, and then remove references in every test function */
 static GstPad *mysrcpad, *mysinkpad;
 
-#define FORMATS  "{ " GST_AUDIO_NE (F32) ", " GST_AUDIO_NE (F64) ", " \
-    GST_AUDIO_NE (S16) ", " GST_AUDIO_NE (S32) " }"
+#if G_BYTE_ORDER == G_LITTLE_ENDIAN
+#define FORMATS  "{ F32LE, F64LE, S16LE, S32LE }"
+#else
+#define FORMATS  "{ F32BE, F64BE, S16BE, S32BE }"
+#endif
 
 #define RESAMPLE_CAPS                   \
     "audio/x-raw, "                     \
@@ -1213,17 +1216,14 @@ run_fft_pipeline (int inrate, int outrate, int quality, int width,
 GST_START_TEST (test_fft)
 {
   int quality;
-  size_t f0;
+  size_t f0, f1;
   static const int frequencies[] =
       { 8000, 16000, 44100, 48000, 128000, 12345, 54321 };
 
   /* audioresample uses a mixed float/double code path for floats with quality>8, make sure we test it */
   for (quality = 0; quality <= 10; quality += 5) {
     for (f0 = 0; f0 < G_N_ELEMENTS (frequencies); ++f0) {
-      // FIXME: actually use f1, currently we just test without resampling!
-      // (Needs fixes somewhere though because the test fails if fixed)
-      // for (size_t f1 = 0; f1 < G_N_ELEMENTS (frequencies); ++f1)
-      {
+      for (f1 = 0; f1 < G_N_ELEMENTS (frequencies); ++f1) {
         run_fft_pipeline (frequencies[f0], frequencies[f0], quality, 32,
             GST_AUDIO_NE (F32), &init_float_silence, &compare_ffts_F32);
         run_fft_pipeline (frequencies[f0], frequencies[f0], quality, 32,

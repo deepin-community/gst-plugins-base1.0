@@ -1,18 +1,23 @@
-qt_cxx_warn_less = cxx.get_supported_arguments(['-Wno-aggregate-return'])
-
-subdir('videooverlay')
-
-if not qt5_have_tools
+if get_option('qt5').disabled()
   subdir_done()
 endif
 
-subdir('mousevideooverlay')
+qt5_mod = import('qt5')
 
-gl_option = get_option('gl')
-qt5gl_option = qt5_option.disable_auto_if(not gstgl_dep.found())
-qt5opengl_dep = dependency('qt5', modules: ['OpenGL'], method: qt5_method,
-    required: qt5gl_option.enabled() and gl_option.enabled() and examples_option.enabled())
-if qt5opengl_dep.found()
-  subdir('qglwidgetvideooverlay')
-  subdir('qglwtextureshare')
+qt5gui_dep = dependency('qt5', modules : ['Core', 'Gui', 'Widgets'], required : false)
+qt5opengl_dep = dependency('qt5', modules : ['OpenGL'], required : false)
+#FIXME; other platforms
+libgl = cc.find_library ('GL', required : false)
+
+qt_cxx_warn_less = cxx.get_supported_arguments(['-Wno-aggregate-return'])
+
+if qt5gui_dep.found()
+  subdir('videooverlay')
+  if libgl.found()
+    subdir('mousevideooverlay')
+    if qt5opengl_dep.found()
+      subdir('qglwidgetvideooverlay')
+      subdir('qglwtextureshare')
+    endif
+  endif
 endif

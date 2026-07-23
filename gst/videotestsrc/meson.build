@@ -1,26 +1,3 @@
-videotestsrc_sources = [
-  'gstvideotestsrc.c',
-  'videotestsrc.c',
-]
-
-videotestsrc_headers = [
-  'gstvideotestsrc.h',
-  'videotestsrc.h',
-]
-
-doc_sources = []
-foreach s: videotestsrc_sources + videotestsrc_headers
-  doc_sources += meson.current_source_dir() / s
-endforeach
-
-plugin_sources += {
-  'videotestsrc': pathsep.join(doc_sources)
-}
-
-if get_option('videotestsrc').disabled()
-  subdir_done()
-endif
-
 videotestsrc_deps = [video_dep, gst_dep, gst_base_dep, libm]
 orcsrc = 'gstvideotestsrcorc'
 if have_orcc
@@ -44,7 +21,7 @@ else
 endif
 
 gstvideotestsrc = library('gstvideotestsrc',
-  videotestsrc_sources + [orc_c, orc_h],
+  'gstvideotestsrc.c', 'videotestsrc.c', orc_c, orc_h,
   c_args : gst_plugins_base_args,
   include_directories: [configinc, libsinc],
   dependencies : videotestsrc_deps,

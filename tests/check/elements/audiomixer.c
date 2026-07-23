@@ -2130,8 +2130,7 @@ GST_START_TEST (test_qos_message_live)
   GstBus *bus = gst_bus_new ();
   GstHarness *h, *h2;
   GstBuffer *b;
-  static const char *caps_str =
-      "audio/x-raw, format=(string)" GST_AUDIO_NE (S16) ", "
+  static const char *caps_str = "audio/x-raw, format=(string)S16LE, "
       "rate=(int)1000, channels=(int)1, layout=(string)interleaved";
   GstMessage *msg;
   GstPad *pad;

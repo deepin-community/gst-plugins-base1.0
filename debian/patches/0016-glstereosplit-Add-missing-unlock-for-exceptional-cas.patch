@@ -1,0 +1,27 @@
+From: Jaehoon Lee <jaehoon85.lee@lge.com>
+Date: Wed, 19 Nov 2025 14:11:31 +0900
+Subject: glstereosplit: Add missing unlock for exceptional case
+
+The context_lock should be released when gst_gl_ensure_element_data fails.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/10145>
+---
+ ext/gl/gstglstereosplit.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/ext/gl/gstglstereosplit.c b/ext/gl/gstglstereosplit.c
+index 8841ce2..f57240b 100644
+--- a/ext/gl/gstglstereosplit.c
++++ b/ext/gl/gstglstereosplit.c
+@@ -215,8 +215,10 @@ stereosplit_change_state (GstElement * element, GstStateChange transition)
+     case GST_STATE_CHANGE_NULL_TO_READY:
+       g_rec_mutex_lock (&stereosplit->context_lock);
+       if (!gst_gl_ensure_element_data (element, &stereosplit->display,
+-              &stereosplit->other_context))
++              &stereosplit->other_context)) {
++        g_rec_mutex_unlock (&stereosplit->context_lock);
+         return GST_STATE_CHANGE_FAILURE;
++      }
+ 
+       gst_gl_display_filter_gl_api (stereosplit->display, SUPPORTED_GL_APIS);
+       g_rec_mutex_unlock (&stereosplit->context_lock);
