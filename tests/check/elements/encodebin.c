@@ -29,7 +29,7 @@
 /* Helper functions to create profiles */
 
 static GstEncodingProfile *
-create_ogg_profile (void)
+create_ogg_profile ()
 {
   GstEncodingContainerProfile *prof;
   GstCaps *ogg;

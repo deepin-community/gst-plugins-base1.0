@@ -97,6 +97,11 @@ struct _GstDiscovererInfo {
   gboolean live;
   gboolean seekable;
   GPtrArray *missing_elements_details;
+
+  gint stream_count;
+
+  gchar *cachefile;
+  gpointer from_cache;
 };
 
 /* missing-plugins.c */

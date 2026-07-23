@@ -1,20 +1,3 @@
-cdparanoia_sources = [
-  'gstcdparanoiasrc.c',
-]
-
-cdparanoia_headers = [
-  'gstcdparanoiasrc.h',
-]
-
-doc_sources = []
-foreach s: cdparanoia_sources + cdparanoia_headers
-  doc_sources += meson.current_source_dir() / s
-endforeach
-
-plugin_sources += {
-  'cdparanoia': pathsep.join(doc_sources)
-}
-
 cdparanoia_deps = []
 cdparanoia_found = false
 cdparanoia_option = get_option('cdparanoia')
@@ -57,7 +40,7 @@ if cdparanoia_found
   ])
 
   gstcdparanoia = library('gstcdparanoia',
-    cdparanoia_sources,
+    ['gstcdparanoiasrc.c'],
     include_directories: [configinc, libsinc],
     c_args : gst_plugins_base_args + extra_args,
     dependencies : cdparanoia_deps + [audio_dep, gst_dep, gst_base_dep],

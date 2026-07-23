@@ -65,25 +65,6 @@ typedef struct _GstExifWriter GstExifWriter;
 typedef struct _GstExifReader GstExifReader;
 typedef struct _GstExifTagData GstExifTagData;
 
-#define GST_CAT_DEFAULT gst_exif_tag_ensure_debug_category()
-
-static GstDebugCategory *
-gst_exif_tag_ensure_debug_category (void)
-{
-  static gsize cat_gonce = 0;
-
-  if (g_once_init_enter (&cat_gonce)) {
-    GstDebugCategory *cat = NULL;
-
-    GST_DEBUG_CATEGORY_INIT (cat, "exif-tags", 0, "EXIF tag parsing");
-
-    g_once_init_leave (&cat_gonce, (gsize) cat);
-  }
-
-  return (GstDebugCategory *) cat_gonce;
-}
-
-
 typedef void (*GstExifSerializationFunc) (GstExifWriter * writer,
     const GstTagList * taglist, const GstExifTagMatch * exiftag);
 
@@ -279,7 +260,6 @@ EXIF_SERIALIZATION_DESERIALIZATION_FUNC (shutter_speed);
 EXIF_SERIALIZATION_DESERIALIZATION_FUNC (source);
 EXIF_SERIALIZATION_DESERIALIZATION_FUNC (speed);
 EXIF_SERIALIZATION_DESERIALIZATION_FUNC (white_balance);
-EXIF_SERIALIZATION_DESERIALIZATION_FUNC (light_source);
 
 EXIF_DESERIALIZATION_FUNC (resolution);
 EXIF_DESERIALIZATION_FUNC (add_to_pending_tags);
@@ -331,7 +311,6 @@ EXIF_DESERIALIZATION_FUNC (add_to_pending_tags);
 #define EXIF_TAG_SCENE_TYPE 0xA301
 #define EXIF_TAG_EXPOSURE_MODE 0xA402
 #define EXIF_TAG_WHITE_BALANCE 0xA403
-#define EXIF_TAG_LIGHT_SOURCE 0x9208
 #define EXIF_TAG_DIGITAL_ZOOM_RATIO 0xA404
 #define EXIF_TAG_FOCAL_LENGTH_IN_35_MM_FILM 0xa405
 #define EXIF_TAG_SCENE_CAPTURE_TYPE 0xA406
@@ -431,8 +410,6 @@ static const GstExifTagMatch tag_map_exif[] = {
       0, serialize_exposure_mode, deserialize_exposure_mode},
   {GST_TAG_CAPTURING_WHITE_BALANCE, EXIF_TAG_WHITE_BALANCE, EXIF_TYPE_SHORT,
       0, serialize_white_balance, deserialize_white_balance},
-  {GST_TAG_CAPTURING_LIGHT_SOURCE, EXIF_TAG_LIGHT_SOURCE, EXIF_TYPE_SHORT,
-      0, serialize_light_source, deserialize_light_source},
   {GST_TAG_CAPTURING_DIGITAL_ZOOM_RATIO, EXIF_TAG_DIGITAL_ZOOM_RATIO,
         EXIF_TYPE_RATIONAL, 0, NULL,
       NULL},
@@ -2129,8 +2106,6 @@ EXIF_SERIALIZATION_DESERIALIZATION_MAP_STRING_TO_INT_FUNC (source,
     capturing_source);
 EXIF_SERIALIZATION_DESERIALIZATION_MAP_STRING_TO_INT_FUNC (white_balance,
     capturing_white_balance);
-EXIF_SERIALIZATION_DESERIALIZATION_MAP_STRING_TO_INT_FUNC (light_source,
-    capturing_light_source);
 
 static void
 serialize_geo_coordinate (GstExifWriter * writer, const GstTagList * taglist,

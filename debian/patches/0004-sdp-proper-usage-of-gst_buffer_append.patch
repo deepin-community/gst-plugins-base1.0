@@ -1,0 +1,23 @@
+From: Mark Nauwelaerts <mnauw@users.sourceforge.net>
+Date: Sat, 20 Sep 2025 20:23:06 +0200
+Subject: sdp: proper usage of gst_buffer_append
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/9723>
+---
+ gst-libs/gst/sdp/gstmikey.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/gst-libs/gst/sdp/gstmikey.c b/gst-libs/gst/sdp/gstmikey.c
+index 0927430..9644bcb 100644
+--- a/gst-libs/gst/sdp/gstmikey.c
++++ b/gst-libs/gst/sdp/gstmikey.c
+@@ -2766,8 +2766,7 @@ gst_mikey_message_to_caps (const GstMIKEYMessage * msg, GstCaps * caps)
+     buf = gst_buffer_new_memdup (pkd->key_data, pkd->key_len);
+     if (pkd->salt_len) {
+       saltbuf = gst_buffer_new_memdup (pkd->salt_data, pkd->salt_len);
+-      gst_buffer_append (buf, saltbuf);
+-      gst_buffer_unref (saltbuf);
++      buf = gst_buffer_append (buf, saltbuf);
+     }
+     gst_caps_set_simple (caps, "srtp-key", GST_TYPE_BUFFER, buf, NULL);
+     gst_buffer_unref (buf);

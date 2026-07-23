@@ -2202,7 +2202,7 @@ create_feedback_buffer (gboolean with_padding)
 }
 
 static GstBuffer *
-create_remb_buffer (void)
+create_remb_buffer ()
 {
   guint8 remb_buffer[20] = {
     0x8f, 0xce, 0x00, 0x04,

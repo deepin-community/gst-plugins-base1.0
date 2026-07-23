@@ -1,0 +1,35 @@
+From: =?utf-8?q?Olivier_Cr=C3=AAte?= <olivier.crete@collabora.com>
+Date: Tue, 19 Aug 2025 09:15:03 -0400
+Subject: rtpbasedepayload: Avoid potential use-after free
+
+Clear the pointer after freeing the reference.
+
+Part-of: <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/9582>
+---
+ gst-libs/gst/rtp/gstrtpbasedepayload.c | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/gst-libs/gst/rtp/gstrtpbasedepayload.c b/gst-libs/gst/rtp/gstrtpbasedepayload.c
+index 0d814de..3519694 100644
+--- a/gst-libs/gst/rtp/gstrtpbasedepayload.c
++++ b/gst-libs/gst/rtp/gstrtpbasedepayload.c
+@@ -497,8 +497,7 @@ gst_rtp_base_depayload_finalize (GObject * object)
+ 
+   g_ptr_array_unref (rtpbasedepayload->priv->header_exts);
+   gst_clear_buffer_list (&rtpbasedepayload->priv->hdrext_buffers);
+-  if (priv->hdrext_delayed)
+-    gst_buffer_unref (priv->hdrext_delayed);
++  gst_clear_buffer (&priv->hdrext_delayed);
+ 
+   G_OBJECT_CLASS (parent_class)->finalize (object);
+ }
+@@ -1758,8 +1757,7 @@ gst_rtp_base_depayload_change_state (GstElement * element,
+       priv->discont = FALSE;
+       priv->segment_seqnum = GST_SEQNUM_INVALID;
+       priv->hdrext_seen = FALSE;
+-      if (priv->hdrext_delayed)
+-        gst_buffer_unref (priv->hdrext_delayed);
++      gst_clear_buffer (&priv->hdrext_delayed);
+       gst_rtp_base_depayload_reset_hdrext_buffers (filter);
+       break;
+     case GST_STATE_CHANGE_PAUSED_TO_PLAYING:

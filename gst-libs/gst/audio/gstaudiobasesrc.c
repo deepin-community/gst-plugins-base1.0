@@ -700,9 +700,8 @@ static guint64
 gst_audio_base_src_get_offset (GstAudioBaseSrc * src)
 {
   guint64 sample;
-  guint64 readseg, segdone;
-  gint segtotal, sps;
-  gint64 diff;
+  gint readseg, segdone, segtotal, sps;
+  gint diff;
 
   /* assume we can append to the previous sample */
   sample = src->next_sample;
@@ -711,12 +710,11 @@ gst_audio_base_src_get_offset (GstAudioBaseSrc * src)
   segtotal = src->ringbuffer->spec.segtotal;
 
   /* get the currently processed segment */
-  segdone = gst_audio_ring_buffer_get_segdone (src->ringbuffer)
-      - gst_audio_ring_buffer_get_segbase (src->ringbuffer);
+  segdone = g_atomic_int_get (&src->ringbuffer->segdone)
+      - src->ringbuffer->segbase;
 
   if (sample != -1) {
-    GST_DEBUG_OBJECT (src,
-        "at segment %" G_GUINT64_FORMAT " and sample %" G_GUINT64_FORMAT,
+    GST_DEBUG_OBJECT (src, "at segment %d and sample %" G_GUINT64_FORMAT,
         segdone, sample);
     /* figure out the segment and the offset inside the segment where
      * the sample should be read from. */
@@ -727,22 +725,20 @@ gst_audio_base_src_get_offset (GstAudioBaseSrc * src)
      * (where we are reading). */
     diff = segdone - readseg;
     if (diff >= segtotal) {
-      GST_DEBUG_OBJECT (src, "dropped, align to segment %" G_GUINT64_FORMAT,
-          segdone);
+      GST_DEBUG_OBJECT (src, "dropped, align to segment %d", segdone);
       /* sample would be dropped, position to next playable position */
       sample = ((guint64) (segdone)) * sps;
     }
   } else {
     /* no previous sample, go to the current position */
-    GST_DEBUG_OBJECT (src, "first sample, align to current %" G_GUINT64_FORMAT,
-        segdone);
-    sample = segdone * sps;
+    GST_DEBUG_OBJECT (src, "first sample, align to current %d", segdone);
+    sample = ((guint64) (segdone)) * sps;
     readseg = segdone;
   }
 
   GST_DEBUG_OBJECT (src,
-      "reading from %" G_GUINT64_FORMAT ", we are at %" G_GUINT64_FORMAT
-      ", sample %" G_GUINT64_FORMAT, readseg, segdone, sample);
+      "reading from %d, we are at %d, sample %" G_GUINT64_FORMAT, readseg,
+      segdone, sample);
 
   return sample;
 }
@@ -880,22 +876,20 @@ gst_audio_base_src_create (GstBaseSrc * bsrc, guint64 offset, guint length,
         GstClockTime base_time;
         GstClockTime current_time;
         guint64 running_time_sample;
-        guint64 running_time_segment;
-        guint64 last_read_segment;
-        gint64 segment_skew;
+        gint running_time_segment;
+        gint last_read_segment;
+        gint segment_skew;
         gint sps;
-        guint64 segments_written;
-        guint64 last_written_segment;
+        gint segments_written;
+        gint last_written_segment;
 
         /* get the amount of segments written from the device by now */
-        segments_written = gst_audio_ring_buffer_get_segdone (src->ringbuffer);
+        segments_written = g_atomic_int_get (&ringbuffer->segdone);
 
         /* subtract the base to segments_written to get the number of the
          * last written segment in the ringbuffer
          * (one segment written = segment 0) */
-        last_written_segment =
-            segments_written - gst_audio_ring_buffer_get_segbase (ringbuffer) -
-            1;
+        last_written_segment = segments_written - ringbuffer->segbase - 1;
 
         /* samples per segment */
         sps = ringbuffer->samples_per_seg;
@@ -929,16 +923,13 @@ gst_audio_base_src_create (GstBaseSrc * bsrc, guint64 offset, guint length,
             GST_TIME_FORMAT
             "\n timestamp                                                  = %"
             GST_TIME_FORMAT
-            "\n running_time_segment                                       = %"
-            G_GUINT64_FORMAT
-            "\n last_written_segment                                       = %"
-            G_GUINT64_FORMAT
-            "\n segment_skew (running time segment - last_written_segment) = %"
-            G_GINT64_FORMAT
-            "\n last_read_segment                                          = %"
-            G_GUINT64_FORMAT, GST_TIME_ARGS (running_time),
-            GST_TIME_ARGS (timestamp), running_time_segment,
-            last_written_segment, segment_skew, last_read_segment);
+            "\n running_time_segment                                       = %d"
+            "\n last_written_segment                                       = %d"
+            "\n segment_skew (running time segment - last_written_segment) = %d"
+            "\n last_read_segment                                          = %d",
+            GST_TIME_ARGS (running_time), GST_TIME_ARGS (timestamp),
+            running_time_segment, last_written_segment, segment_skew,
+            last_read_segment);
 
         /* Resync the ringbuffer if:
          *
@@ -952,8 +943,8 @@ gst_audio_base_src_create (GstBaseSrc * bsrc, guint64 offset, guint length,
          */
         if ((segment_skew >= ringbuffer->spec.segtotal) ||
             (last_read_segment == 0) || first_sample) {
-          guint64 new_read_segment;
-          guint64 segment_diff;
+          gint new_read_segment;
+          gint segment_diff;
           guint64 new_sample;
 
           /* the difference between running_time and the last written segment */
@@ -963,11 +954,11 @@ gst_audio_base_src_create (GstBaseSrc * bsrc, guint64 offset, guint length,
           gst_audio_ring_buffer_advance (ringbuffer, segment_diff);
 
           /* we move the  new read segment to the last known written segment */
-          new_read_segment = gst_audio_ring_buffer_get_segdone (src->ringbuffer)
-              - gst_audio_ring_buffer_get_segbase (src->ringbuffer);
+          new_read_segment =
+              g_atomic_int_get (&ringbuffer->segdone) - ringbuffer->segbase;
 
           /* we calculate the new sample value */
-          new_sample = new_read_segment * sps;
+          new_sample = ((guint64) new_read_segment) * sps;
 
           /* and get the relative time to this -> our new timestamp */
           timestamp = gst_util_uint64_scale_int (new_sample, GST_SECOND, rate);
@@ -976,7 +967,7 @@ gst_audio_base_src_create (GstBaseSrc * bsrc, guint64 offset, guint length,
           src->next_sample = new_sample + samples;
 
           GST_DEBUG_OBJECT (bsrc,
-              "Timeshifted the ringbuffer with %" G_GINT64_FORMAT " segments: "
+              "Timeshifted the ringbuffer with %d segments: "
               "Updating the timestamp to %" GST_TIME_FORMAT ", "
               "and src->next_sample to %" G_GUINT64_FORMAT, segment_diff,
               GST_TIME_ARGS (timestamp), src->next_sample);
