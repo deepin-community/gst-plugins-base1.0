@@ -29,3 +29,4 @@
 0029-opusenc-Use-the-surround-multistream-encoder-for-the.patch
 0030-glwindow_cocoa-fix-window-not-closing-w-o-user-windo.patch
 0031-riff-Correctly-check-that-enough-RGB-palette-data-is.patch
+CVE-2026-18297.patch
