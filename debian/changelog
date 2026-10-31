@@ -1,3 +1,12 @@
+gst-plugins-base1.0 (1.24.13-0deepin5) unstable; urgency=medium
+
+  * fix(cve): CVE-2026-119842 (unknown) - subparse: Avoid NULL-pointer
+    dereferences in mdvdsub parsing code   Upstream:
+    https://gitlab.freedesktop.org/gstreamer/gstreamer/-
+    /commit/4abcbf913999ec9869f302732519827cf52c4023.patch
+
+ -- deepin-ci-robot <packages@deepin.org>  Sat, 31 Oct 2026 12:31:55 +0800
+
 gst-plugins-base1.0 (1.24.13-0deepin4) unstable; urgency=medium
 
   * fix(cve): CVE-2026-85150 (high) - [PATCH] rtsp/message: fix crash
