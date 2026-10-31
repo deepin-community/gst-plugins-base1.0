@@ -31,3 +31,4 @@
 0031-riff-Correctly-check-that-enough-RGB-palette-data-is.patch
 CVE-2026-18297.patch
 CVE-2026-85150.patch
+CVE-2026-119842.patch
