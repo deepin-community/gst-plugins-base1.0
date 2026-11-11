@@ -4,6 +4,14 @@ gst-plugins-base1.0 (1.24.13-0deepin5) unstable; urgency=medium
     dereferences in mdvdsub parsing code   Upstream:
     https://gitlab.freedesktop.org/gstreamer/gstreamer/-
     /commit/4abcbf913999ec9869f302732519827cf52c4023.patch
+  * fix(cve): CVE-2026-125040 (medium) - subparse: Replace a
+    g_strv_length() in a loop header with more efficient code
+    Upstream: https://gitlab.freedesktop.org/gstreamer/gstreamer/-
+    /commit/d33fc5577ae38caa91b24f90a695d5ced19b76af,https://gitlab.free
+    desktop.org/gstreamer/gstreamer/-
+    /commit/a41cbb42cedb1cf4a4c2ad6658ff80c7f4cf2404,https://gitlab.free
+    desktop.org/gstreamer/gstreamer/-
+    /commit/3a81eb4d7d2c0a34191a855d0bafbf4e8dd7231c
 
  -- deepin-ci-robot <packages@deepin.org>  Sat, 31 Oct 2026 12:31:55 +0800
 
