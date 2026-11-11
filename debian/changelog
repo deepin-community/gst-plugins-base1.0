@@ -12,6 +12,12 @@ gst-plugins-base1.0 (1.24.13-0deepin5) unstable; urgency=medium
     /commit/a41cbb42cedb1cf4a4c2ad6658ff80c7f4cf2404,https://gitlab.free
     desktop.org/gstreamer/gstreamer/-
     /commit/3a81eb4d7d2c0a34191a855d0bafbf4e8dd7231c
+  * fix(cve): CVE-2026-125712 (unknown) - rtcpbuffer: Add some missing
+    bounds checks when parsing SDES   Upstream:
+    https://gitlab.freedesktop.org/gstreamer/gstreamer/-
+    /commit/aa4fd38ccc4ded2c049f70aba6974cd3973b3bb8,https://gitlab.free
+    desktop.org/gstreamer/gstreamer/-
+    /commit/285c721f2b37b8391befef4b37b9b58221a06d3e
 
  -- deepin-ci-robot <packages@deepin.org>  Sat, 31 Oct 2026 12:31:55 +0800
 
